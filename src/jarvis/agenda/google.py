@@ -11,7 +11,13 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from jarvis.agenda.base import CalendarError, CalendarNotAuthorizedError, Meeting
-from jarvis.agenda.google_auth import LOGIN_HINT, load_credentials
+from jarvis.google_auth import (
+    CALENDAR_SCOPE,
+    LOGIN_HINT,
+    GoogleAuthError,
+    GoogleNotAuthorizedError,
+    load_credentials,
+)
 
 MAX_ATTENDEES = 10
 
@@ -21,7 +27,7 @@ ServiceFactory = Callable[[], Any]
 
 def google_service_factory(token_file: Path) -> ServiceFactory:
     def factory() -> Any:
-        credentials = load_credentials(token_file)
+        credentials = load_credentials(token_file, [CALENDAR_SCOPE])
         return build("calendar", "v3", credentials=credentials, cache_discovery=False)
 
     return factory
@@ -68,6 +74,10 @@ class GoogleCalendar:
                     return events
         except HttpError as exc:
             raise self._http_error(exc) from exc
+        except GoogleNotAuthorizedError as exc:
+            raise CalendarNotAuthorizedError(str(exc)) from exc
+        except GoogleAuthError as exc:
+            raise CalendarError(str(exc)) from exc
         except RefreshError as exc:
             raise CalendarNotAuthorizedError(
                 f"Google rechazó la autorización (pudo ser revocada). {LOGIN_HINT}"

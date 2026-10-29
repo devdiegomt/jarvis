@@ -1,3 +1,4 @@
+from datetime import time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -74,3 +75,30 @@ def test_build_calendar_google_with_token(tmp_path: Path) -> None:
     settings = load_settings({**BASE_ENV, "JARVIS_CALENDAR": "google", "GOOGLE_TOKEN_FILE": str(token_file)})
 
     assert isinstance(build_calendar(settings), GoogleCalendar)
+
+
+def test_summary_disabled_by_default() -> None:
+    summary = load_settings(BASE_ENV).summary
+
+    assert not summary.enabled
+    assert summary.send_time == time(7, 0)
+    assert summary.db_path == DEFAULT_CONFIG_DIR / "jarvis.db"
+
+
+def test_summary_custom_values() -> None:
+    summary = load_settings(
+        {**BASE_ENV, "JARVIS_RESUMEN_DESTINATARIO": "yo@example.com", "JARVIS_RESUMEN_HORA": "6:45"}
+    ).summary
+
+    assert summary.enabled
+    assert summary.recipient == "yo@example.com"
+    assert summary.send_time == time(6, 45)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("JARVIS_RESUMEN_DESTINATARIO", "no-es-un-correo"), ("JARVIS_RESUMEN_HORA", "7 am"), ("JARVIS_RESUMEN_HORA", "25:00")],
+)
+def test_invalid_summary_settings_fail(name: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=name):
+        load_settings({**BASE_ENV, name: value})
