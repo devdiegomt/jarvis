@@ -1,9 +1,15 @@
-"""Comandos `jarvis telegram` (chat con JARVIS) y `jarvis telegram-vincular` (obtener tu ID)."""
+"""Comandos de Telegram.
+
+- `jarvis telegram`: chat con JARVIS (en una terminal o, con `--programado`, en segundo plano).
+- `jarvis telegram-vincular`: obtener tu ID para TELEGRAM_OWNER_ID.
+- `jarvis programar-telegram` / `quitar-telegram`: arrancar JARVIS al iniciar sesión en Windows.
+"""
 
 import logging
+import os
 import sys
+import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any, NoReturn
 
 import anthropic
@@ -20,24 +26,41 @@ from jarvis.config import (
     load_telegram_settings,
     read_env,
 )
+from jarvis.logs import FILE_ONLY, setup_logger
 from jarvis.memory import ConversationStore
 from jarvis.prompts import build_chat_system_prompt
-from jarvis.telegram.bot import TelegramChannel, TelegramPoller, wait_for_first_message
-from jarvis.telegram.client import TelegramClient, TelegramError
+from jarvis.telegram.bot import (
+    MAX_BACKOFF_SECONDS,
+    TelegramChannel,
+    TelegramPoller,
+    wait_for_first_message,
+)
+from jarvis.telegram.client import (
+    TelegramClient,
+    TelegramConflictError,
+    TelegramConnectionError,
+    TelegramError,
+)
 from jarvis.tools import Confirmer, build_registry
 
 LINK_TIMEOUT_SECONDS = 5 * 60
+BACKGROUND_HINT = (
+    "Si programaste JARVIS con `programar-telegram`, ya está corriendo en segundo plano: "
+    "no hace falta abrirlo a mano. Para detenerlo: `uv run jarvis quitar-telegram`."
+)
 
 logger = logging.getLogger("jarvis.chat")
 
 
-def run_telegram() -> None:
+def run_telegram(scheduled: bool = False) -> None:
+    """Chat por Telegram. En modo programado no hay consola: todo queda en el log."""
+    setup_logger(logger, TELEGRAM_LOG_FILE, console=not scheduled)
     settings, telegram = _load_or_exit(require_owner=True)
     assert settings is not None and telegram.owner_id is not None
-    _setup_logging()
     calendar = _build_calendar_or_exit(settings)
     client = TelegramClient(telegram.bot_token)
-    bot_name = _prepare_bot_or_exit(client)
+    # En segundo plano la red puede tardar en estar lista tras encender o despertar el PC.
+    bot_name = _prepare_bot_or_exit(client, wait_for_network=scheduled)
 
     def now() -> datetime:
         return datetime.now(settings.timezone)
@@ -66,14 +89,15 @@ def run_telegram() -> None:
 
     print(f"JARVIS conectado a Telegram como @{bot_name} (calendario: {calendar.name}).")
     print("Escríbele a tu bot desde Telegram. Ctrl+C para detener.\n")
-    logger.info("Bot de Telegram iniciado.")
+    logger.info("Bot de Telegram iniciado%s.", " en segundo plano" if scheduled else "")
     try:
-        poller.run_forever()
+        poller.run_forever(wait_on_conflict=scheduled)
     except KeyboardInterrupt:
         print("\nJARVIS desconectado.")
+    except TelegramConflictError as exc:
+        _fail(f"Error de Telegram: {exc} {BACKGROUND_HINT}")
     except TelegramError as exc:
-        logger.error("El bot se detuvo: %s", exc)
-        _fail(f"Error de Telegram: {exc}")
+        _fail(f"El bot se detuvo. Error de Telegram: {exc}")
     finally:
         logger.info("Bot de Telegram detenido.")
 
@@ -91,11 +115,64 @@ def run_link() -> None:
     except KeyboardInterrupt:
         print("\nCancelado.")
         return
+    except TelegramConflictError as exc:
+        _fail(f"Error de Telegram: {exc} {BACKGROUND_HINT}")
     except TelegramError as exc:
         _fail(f"Error de Telegram: {exc}")
     if user is None:
         _fail("No llegó ningún mensaje en 5 minutos. Vuelve a intentarlo.")
     _print_link_result(user)
+
+
+def run_schedule_install() -> None:
+    """`jarvis programar-telegram`: arranca JARVIS al iniciar sesión, y también ahora mismo."""
+    from jarvis.scheduler import (
+        PROJECT_DIR,
+        TELEGRAM_ARGUMENTS,
+        TELEGRAM_TASK,
+        SchedulerError,
+        cron_reboot_line,
+        install_task,
+        jarvis_command,
+        start_task,
+        telegram_task_xml,
+        windows_user,
+    )
+
+    _, telegram = _load_or_exit(require_owner=True)
+    _prepare_bot_or_exit(TelegramClient(telegram.bot_token))  # comprueba el token antes de programar
+    command = jarvis_command(PROJECT_DIR, TELEGRAM_ARGUMENTS)
+
+    if os.name != "nt":
+        print("El arranque automático solo está disponible en Windows.")
+        print("Agrega esta línea a tu crontab (`crontab -e`) para arrancarlo al encender el equipo:")
+        print(cron_reboot_line(command))
+        return
+
+    try:
+        install_task(TELEGRAM_TASK, telegram_task_xml(command, windows_user()))
+        start_task(TELEGRAM_TASK)
+    except SchedulerError as exc:
+        _fail(str(exc))
+    print("Listo: JARVIS ya corre en segundo plano y arrancará solo al iniciar sesión en Windows.")
+    print("Escríbele a tu bot para comprobarlo. Si tenías `jarvis telegram` abierto, ciérralo.")
+    print("Para ver cómo va: `uv run jarvis estado`.")
+
+
+def run_schedule_remove() -> None:
+    """`jarvis quitar-telegram`: detiene JARVIS en segundo plano y quita el arranque automático."""
+    from jarvis.scheduler import TELEGRAM_TASK, SchedulerError, remove_task, stop_task, task_state
+
+    if os.name != "nt":
+        print("En Mac o Linux, quita la línea de JARVIS de tu crontab con `crontab -e`.")
+        return
+    try:
+        if task_state(TELEGRAM_TASK) == "Running":
+            stop_task(TELEGRAM_TASK)
+        remove_task(TELEGRAM_TASK)
+    except SchedulerError as exc:
+        _fail(str(exc))
+    print("Listo: JARVIS ya no corre en segundo plano ni arrancará al iniciar sesión.")
 
 
 def _print_link_result(user: dict[str, Any]) -> None:
@@ -105,15 +182,23 @@ def _print_link_result(user: dict[str, Any]) -> None:
     print("Después ejecuta `uv run jarvis telegram`.")
 
 
-def _prepare_bot_or_exit(client: TelegramClient) -> str:
+def _prepare_bot_or_exit(client: TelegramClient, wait_for_network: bool = False) -> str:
     """Comprueba el token, desactiva cualquier webhook y registra el menú de comandos."""
-    try:
-        bot = client.get_me()
-        client.delete_webhook()
-        client.set_commands(COMMANDS)
-    except TelegramError as exc:
-        _fail(f"Error de Telegram: {exc}")
-    return str(bot.get("username", "tu_bot"))
+    backoff = 1.0
+    while True:
+        try:
+            bot = client.get_me()
+            client.delete_webhook()
+            client.set_commands(COMMANDS)
+            return str(bot.get("username", "tu_bot"))
+        except TelegramConnectionError as exc:
+            if not wait_for_network:
+                _fail(f"Error de Telegram: {exc}")
+            logger.warning("%s Reintento en %.0f s.", exc, backoff)
+            time.sleep(backoff)
+            backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
+        except TelegramError as exc:
+            _fail(f"Error de Telegram: {exc}")
 
 
 def _load_or_exit(
@@ -135,15 +220,7 @@ def _build_calendar_or_exit(settings: Settings) -> CalendarSource:
 
 
 def _fail(message: str) -> NoReturn:
+    """Termina con error. Queda en el log por si no hay consola (modo programado)."""
+    logger.error(message, extra=FILE_ONLY)
     print(message, file=sys.stderr)
     sys.exit(1)
-
-
-def _setup_logging(log_file: Path = TELEGRAM_LOG_FILE) -> None:
-    """Log en archivo y en consola: solo IDs y resultados, nunca el texto de los mensajes."""
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    for handler in (logging.FileHandler(log_file, encoding="utf-8"), logging.StreamHandler()):
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    logger.setLevel(logging.INFO)

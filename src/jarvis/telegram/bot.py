@@ -6,11 +6,12 @@ from collections.abc import Callable
 from typing import Any
 
 from jarvis.chat import ButtonAnswer, ChatEvent, IncomingMessage, split_text
-from jarvis.telegram.client import TelegramClient, TelegramConnectionError
+from jarvis.telegram.client import TelegramClient, TelegramConflictError, TelegramConnectionError
 
 CHANNEL_NAME = "telegram"
 MAX_TEXT_LENGTH = 4096  # límite de Telegram por mensaje
 MAX_BACKOFF_SECONDS = 60
+CONFLICT_WAIT_SECONDS = 60
 
 logger = logging.getLogger("jarvis.chat")
 
@@ -102,9 +103,13 @@ class TelegramPoller:
             delivered += 1
         return delivered
 
-    def run_forever(self) -> None:
-        """Consulta sin parar. Los fallos de red se reintentan con espera creciente;
-        los demás errores (token inválido, otra instancia) se propagan."""
+    def run_forever(self, wait_on_conflict: bool = False) -> None:
+        """Consulta sin parar. Los fallos de red se reintentan con espera creciente.
+
+        Si otra copia está leyendo el mismo bot, con `wait_on_conflict` (modo en segundo plano)
+        se espera a que termine; si no, el error se propaga. Los demás errores (token inválido,
+        certificado) siempre se propagan.
+        """
         backoff = 1.0
         while True:
             try:
@@ -114,6 +119,13 @@ class TelegramPoller:
                 logger.warning("%s Reintento en %.0f s.", exc, backoff)
                 self._sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
+            except TelegramConflictError:
+                if not wait_on_conflict:
+                    raise
+                logger.warning(
+                    "Otra copia de JARVIS está usando el bot. Reintento en %d s.", CONFLICT_WAIT_SECONDS
+                )
+                self._sleep(CONFLICT_WAIT_SECONDS)
 
 
 def wait_for_first_message(

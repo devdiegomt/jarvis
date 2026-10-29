@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.2 (cubre hasta la v0.5.1)
+- **Versión del documento:** 1.3 (cubre hasta la v0.6)
 - **Fecha:** 2026-10-29
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -106,6 +106,16 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-21.** Los mensajes que no son texto reciben una respuesta indicando que solo se entiende texto.
 - **RF-22.** Las respuestas de más de 4096 caracteres se dividen en varios mensajes.
 
+### v0.6: JARVIS siempre disponible
+
+- **RF-23.** `programar-telegram` hace que JARVIS arranque en segundo plano, sin ventanas, al
+  iniciar sesión en Windows (y en ese momento); `quitar-telegram` lo detiene y quita el arranque.
+- **RF-24.** En segundo plano, JARVIS se reconecta solo tras cortes de red o suspensión, y espera
+  si otra copia está usando el bot en lugar de terminar.
+- **RF-25.** `jarvis estado` muestra la configuración, el estado de las tareas programadas y las
+  últimas líneas de los registros.
+- **RF-26.** `resumen --dry-run` indica por qué canal se enviaría el resumen.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -136,6 +146,8 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   autorización no se reintentan.
 - **RNF-11.** Las actualizaciones que Telegram reenvía tras un reinicio no producen respuestas
   duplicadas; los fallos de red se reintentan con espera creciente.
+- **RNF-11b.** Los registros rotan (1 MB por archivo, como máximo 4 archivos) para no crecer sin
+  límite con JARVIS corriendo todo el día.
 
 ### 4.4 Calidad y mantenibilidad
 
@@ -147,8 +159,9 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 
 ### 4.5 Plataforma
 
-- **RNF-17.** Windows es la plataforma principal; la programación del resumen usa el Programador
-  de tareas. En Mac y Linux, el resto funciona y se indica la línea de `cron` equivalente.
+- **RNF-17.** Windows es la plataforma principal; la programación del resumen y del chat en segundo
+  plano usa el Programador de tareas, siempre con la sesión del usuario iniciada (sin guardar su
+  contraseña). En Mac y Linux, el resto funciona y se indica la línea de `cron` equivalente.
 
 ## 5. Fuera de alcance (por ahora)
 
@@ -167,4 +180,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-08 a RF-11 | `agenda/`, `google_auth.py`, `tools/reuniones.py` | `test_google_calendar.py`, `test_google_auth.py`, `test_tools.py` |
 | RF-12 a RF-16 | `summary.py`, `summary_cli.py`, `notify/`, `scheduler.py`, `storage.py` | `test_summary.py`, `test_gmail.py`, `test_scheduler.py`, `test_storage.py` |
 | RF-17 a RF-22 | `chat.py`, `telegram/`, `memory.py`, `confirmation.py` | `test_chat.py`, `test_telegram.py`, `test_memory.py`, `test_confirmation.py` |
+| RF-23 a RF-26 | `scheduler.py`, `telegram/app.py`, `status.py`, `logs.py`, `summary_cli.py` | `test_scheduler.py`, `test_status.py`, `test_logs.py`, `test_telegram.py`, `test_summary_cli.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |
