@@ -6,7 +6,13 @@ import pytest
 
 from jarvis.agenda import SampleCalendar, build_calendar
 from jarvis.agenda.google import GoogleCalendar
-from jarvis.config import DEFAULT_CONFIG_DIR, DEFAULT_MODEL, ConfigError, load_settings
+from jarvis.config import (
+    DEFAULT_CONFIG_DIR,
+    DEFAULT_MODEL,
+    ConfigError,
+    load_settings,
+    load_whatsapp_settings,
+)
 
 BASE_ENV = {"ANTHROPIC_API_KEY": "sk-test"}
 
@@ -102,3 +108,31 @@ def test_summary_custom_values() -> None:
 def test_invalid_summary_settings_fail(name: str, value: str) -> None:
     with pytest.raises(ConfigError, match=name):
         load_settings({**BASE_ENV, name: value})
+
+
+WHATSAPP_ENV = {
+    "WHATSAPP_ACCESS_TOKEN": "token",
+    "WHATSAPP_PHONE_NUMBER_ID": "12345",
+    "WHATSAPP_APP_SECRET": "secreto",
+    "WHATSAPP_VERIFY_TOKEN": "verificacion",
+    "WHATSAPP_OWNER_NUMBER": "+57 300-123 4567",
+}
+
+
+def test_whatsapp_settings() -> None:
+    whatsapp = load_whatsapp_settings(WHATSAPP_ENV)
+
+    assert whatsapp.owner_number == "573001234567"
+    assert whatsapp.port == 8000
+    assert whatsapp.api_version == "v25.0"
+
+
+def test_whatsapp_missing_variables_are_listed() -> None:
+    with pytest.raises(ConfigError, match="WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN"):
+        load_whatsapp_settings({**WHATSAPP_ENV, "WHATSAPP_APP_SECRET": "", "WHATSAPP_VERIFY_TOKEN": " "})
+
+
+@pytest.mark.parametrize(("name", "value"), [("WHATSAPP_OWNER_NUMBER", "123"), ("WHATSAPP_PORT", "puerto")])
+def test_whatsapp_invalid_values(name: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=name):
+        load_whatsapp_settings({**WHATSAPP_ENV, name: value})
