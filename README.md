@@ -167,6 +167,13 @@ solas. El log (`~/.config/jarvis/logs/telegram.log`) registra solo IDs y resulta
   por bot. Cierra la otra terminal.
 - **JARVIS no responde y el log dice "usuario no autorizado"**: el ID de `TELEGRAM_OWNER_ID` no es
   el tuyo; repite `uv run jarvis telegram-vincular`.
+- **"su certificado HTTPS no es de confianza en este equipo"**: algo intercepta las conexiones HTTPS
+  (normalmente la protección web de un antivirus, o un proxy de empresa). JARVIS verifica con el
+  almacén de certificados de Windows, igual que el navegador, así que si el certificado del
+  antivirus está instalado en el sistema debería funcionar. Para comprobar quién intercepta, abre
+  `https://api.telegram.org` en el navegador, pulsa el candado y mira **Emitido por**: debería ser
+  tu antivirus. Si no reconoces al emisor, no sigas y revisa tu red. Si es tu antivirus y aun así
+  falla, añade `api.telegram.org` a sus exclusiones de análisis HTTPS.
 
 ## Resumen diario
 

@@ -21,6 +21,8 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
 - **v0.5 (hecha):** Telegram como canal único: chat con botones de confirmación (long polling, sin
   puertos abiertos) y resumen diario por Telegram (`JARVIS_RESUMEN_CANAL`, Gmail como alternativa).
   Lógica del chat independiente del canal (`chat.py`). Ver `docs/adr/005-telegram-como-canal.md`.
+  v0.5.1: HTTPS verificado con el almacén de certificados del sistema (`truststore`), para equipos
+  con antivirus o proxy que inspeccionan el tráfico. Ver `docs/adr/006-verificacion-tls-sistema.md`.
 - **Siguiente (por definir):** por ejemplo, arrancar `jarvis telegram` con Windows, servidor en la
   nube, o avisos de mensajes de clientes desde otra fuente (Gmail, CRM).
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
@@ -33,7 +35,8 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 - Google Calendar API y Gmail API (`google-api-python-client`, `google-auth-oauthlib`):
   `calendar.readonly` y, solo si el resumen va por Gmail, `gmail.send`
 - Modelo configurable por variable de entorno `JARVIS_MODEL` (default: `claude-sonnet-5-5`)
-- API de bots de Telegram vía `urllib` (long polling, sin webhook ni dependencias extra)
+- API de bots de Telegram vía `urllib` (long polling, sin webhook), con `truststore` para verificar
+  HTTPS con el almacén de certificados del sistema
 - SQLite para persistencia local (más adelante Postgres)
 - `python-dotenv` para configuración, `pytest` para tests
 - Gestión de dependencias con `uv` y `pyproject.toml`
@@ -89,6 +92,8 @@ jarvis/
 
 ## Seguridad (obligatorio)
 - Nunca escribir keys, tokens ni credenciales en el código ni en commits. Todo va en `.env` (ignorado por git).
+- Nunca desactivar la verificación de certificados HTTPS. Las llamadas HTTP propias usan `truststore`
+  (almacén del sistema), como el SDK de Anthropic.
 - Credenciales y tokens de OAuth viven fuera del repo (por defecto `~/.config/jarvis/`). Pedir siempre
   el permiso mínimo (hoy `calendar.readonly` y, solo con el resumen por Gmail, `gmail.send`).
 - Las acciones programadas (como el resumen diario) no son tools: el destinatario es fijo por

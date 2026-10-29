@@ -1,9 +1,12 @@
 import io
 import json
+import socket
+import ssl
 import urllib.error
 from typing import Any
 
 import pytest
+import truststore
 
 from jarvis.chat import ButtonAnswer, IncomingMessage
 from jarvis.notify import NotificationError, NotificationNotAuthorizedError
@@ -12,6 +15,7 @@ from jarvis.telegram import client as client_module
 from jarvis.telegram.bot import TelegramChannel, TelegramPoller, parse_update, wait_for_first_message
 from jarvis.telegram.client import (
     TelegramAuthError,
+    TelegramCertificateError,
     TelegramClient,
     TelegramConflictError,
     TelegramConnectionError,
@@ -128,6 +132,50 @@ def test_network_errors_are_retryable(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(TelegramConnectionError) as excinfo:
         TelegramClient(TOKEN).get_me()
     assert excinfo.value.__cause__ is None  # sin la excepción original, que incluye la URL
+
+
+@pytest.mark.parametrize(
+    ("reason", "error_type", "expected"),
+    [
+        (
+            ssl.SSLCertVerificationError("self-signed certificate in certificate chain"),
+            TelegramCertificateError,
+            "antivirus o proxy",
+        ),
+        (socket.gaierror("getaddrinfo failed"), TelegramConnectionError, "no se encontró api.telegram.org"),
+        (TimeoutError("timed out"), TelegramConnectionError, "tiempo de espera"),
+    ],
+)
+def test_network_errors_explain_the_cause(
+    monkeypatch: pytest.MonkeyPatch, reason: Exception, error_type: type, expected: str
+) -> None:
+    def failing(*_args: Any, **_kwargs: Any) -> Any:
+        raise urllib.error.URLError(reason)
+
+    monkeypatch.setattr(client_module.urllib.request, "urlopen", failing)
+
+    with pytest.raises(error_type, match=expected) as excinfo:
+        TelegramClient(TOKEN).get_me()
+    assert TOKEN not in str(excinfo.value)
+
+
+def test_certificate_errors_are_not_retried() -> None:
+    assert not issubclass(TelegramCertificateError, TelegramConnectionError)
+
+
+def test_https_uses_the_operating_system_trust_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    contexts: list[Any] = []
+
+    def capture(_request: Any, timeout: float, context: Any) -> Any:
+        contexts.append(context)
+        return io.BytesIO(b'{"ok": true, "result": {}}')
+
+    monkeypatch.setattr(client_module.urllib.request, "urlopen", capture)
+
+    TelegramClient(TOKEN).get_me()
+
+    assert isinstance(contexts[0], truststore.SSLContext)
+    assert contexts[0].verify_mode == ssl.CERT_REQUIRED
 
 
 # --- Recepción de actualizaciones -------------------------------------------
