@@ -1,5 +1,8 @@
-# Configuración local (contiene secretos)
+# Configuración local y credenciales (contienen secretos)
 .env
+credentials*.json
+token*.json
+client_secret*.json
 
 # Python
 __pycache__/
