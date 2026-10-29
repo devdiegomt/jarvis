@@ -4,7 +4,6 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import NoReturn
 
 import anthropic
@@ -19,11 +18,10 @@ from jarvis.config import (
     load_telegram_settings,
     read_env,
 )
+from jarvis.logs import FILE_ONLY, setup_logger
 from jarvis.notify import ConsoleNotifier, NotificationError, Notifier
 from jarvis.storage import SummaryLog
 from jarvis.summary import DailySummary, run_with_retries, send_daily_summary
-
-PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 # En modo programado se reintenta ante fallos temporales (por ejemplo, sin red al encender).
 SCHEDULED_ATTEMPTS = 4  # el primero + 3 reintentos
@@ -42,7 +40,7 @@ DISABLED_MESSAGE = (
 def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
     """`jarvis resumen`. Con `pythonw` no hay consola: el resultado queda en el log."""
     if not dry_run:
-        _setup_log_file()
+        setup_logger(logger, SUMMARY_LOG_FILE, console=False)
     settings = _load_settings_or_exit()
     if not dry_run and not settings.summary.enabled:
         _fail(DISABLED_MESSAGE)
@@ -81,7 +79,10 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
         raise
 
     if dry_run:
-        print("\n(Modo prueba: no se envió nada.)")
+        channel = _destination(settings) if settings.summary.enabled else "ninguno"
+        print(f"\n(Modo prueba: no se envió nada. Canal configurado: {channel}.)")
+        if not settings.summary.enabled:
+            print(DISABLED_MESSAGE)
     elif summary is None:
         logger.info("Resumen del %s ya enviado; no se reenvía.", day)
         print("El resumen de hoy ya se había enviado. Usa --force para reenviarlo.")
@@ -95,7 +96,17 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
 
 def run_schedule_install() -> None:
     """`jarvis programar-resumen`: comprueba la configuración y registra la tarea."""
-    from jarvis.scheduler import SchedulerError, cron_line, install_windows_task, summary_command
+    from jarvis.scheduler import (
+        PROJECT_DIR,
+        SUMMARY_ARGUMENTS,
+        SUMMARY_TASK,
+        SchedulerError,
+        cron_line,
+        install_task,
+        jarvis_command,
+        summary_task_xml,
+        windows_user,
+    )
 
     settings = _load_settings_or_exit()
     if not settings.summary.enabled:
@@ -104,7 +115,7 @@ def run_schedule_install() -> None:
     if settings.calendar_source == "sample":
         print("Aviso: JARVIS_CALENDAR=sample, así que el resumen usará reuniones de ejemplo.")
 
-    command = summary_command(PROJECT_DIR)
+    command = jarvis_command(PROJECT_DIR, SUMMARY_ARGUMENTS)
     hour = f"{settings.summary.send_time:%H:%M}"
     if os.name != "nt":
         print("La programación automática solo está disponible en Windows.")
@@ -114,7 +125,8 @@ def run_schedule_install() -> None:
 
     tomorrow = datetime.now(settings.timezone).date() + timedelta(days=1)
     try:
-        install_windows_task(command, settings.summary.send_time, tomorrow)
+        xml = summary_task_xml(command, settings.summary.send_time, tomorrow, windows_user())
+        install_task(SUMMARY_TASK, xml)
     except SchedulerError as exc:
         _fail(str(exc))
     print(f"Listo: recibirás el resumen de lunes a viernes a las {hour} por {_destination(settings)}.")
@@ -124,13 +136,13 @@ def run_schedule_install() -> None:
 
 def run_schedule_remove() -> None:
     """`jarvis quitar-resumen`."""
-    from jarvis.scheduler import SchedulerError, remove_windows_task
+    from jarvis.scheduler import SUMMARY_TASK, SchedulerError, remove_task
 
     if os.name != "nt":
         print("En Mac o Linux, quita la línea de JARVIS de tu crontab con `crontab -e`.")
         return
     try:
-        remove_windows_task()
+        remove_task(SUMMARY_TASK)
     except SchedulerError as exc:
         _fail(str(exc))
     print("Listo: ya no se enviará el resumen diario.")
@@ -198,16 +210,7 @@ def _build_calendar_or_exit(settings: Settings) -> CalendarSource:
 
 
 def _fail(message: str) -> NoReturn:
-    logger.error(message)
+    logger.error(message, extra=FILE_ONLY)
     print(message, file=sys.stderr)
     sys.exit(1)
 
-
-def _setup_log_file(log_file: Path = SUMMARY_LOG_FILE) -> None:
-    if any(isinstance(h, logging.FileHandler) for h in logger.handlers):
-        return
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(log_file, encoding="utf-8")
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)

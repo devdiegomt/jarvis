@@ -304,3 +304,25 @@ def test_wait_for_first_message_times_out() -> None:
     api = FakeApi({"getUpdates": [[]]})
 
     assert wait_for_first_message(TelegramClient(TOKEN, call=api), 60, clock=lambda: next(ticks)) is None
+
+
+def test_background_poller_waits_when_another_copy_uses_the_bot() -> None:
+    conflict = TelegramConflictError("otra copia")
+    fatal = TelegramAuthError("token inválido")
+    api = FakeApi({"getUpdates": [conflict, conflict, fatal]})
+    waits: list[float] = []
+
+    poller = TelegramPoller(TelegramClient(TOKEN, call=api), OWNER, lambda _e: None, lambda _k: True, sleep=waits.append)
+
+    with pytest.raises(TelegramAuthError):
+        poller.run_forever(wait_on_conflict=True)
+    assert waits == [60, 60]
+
+
+def test_manual_poller_stops_when_another_copy_uses_the_bot() -> None:
+    api = FakeApi({"getUpdates": [TelegramConflictError("otra copia")]})
+
+    poller = TelegramPoller(TelegramClient(TOKEN, call=api), OWNER, lambda _e: None, lambda _k: True)
+
+    with pytest.raises(TelegramConflictError):
+        poller.run_forever()

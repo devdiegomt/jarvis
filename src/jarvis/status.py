@@ -1,0 +1,101 @@
+"""Comando `jarvis estado`: configuración, tareas programadas y últimas líneas de los registros."""
+
+import os
+from collections.abc import Callable, Mapping
+from pathlib import Path
+
+from jarvis.config import (
+    SUMMARY_LOG_FILE,
+    TELEGRAM_LOG_FILE,
+    ConfigError,
+    load_settings,
+    load_telegram_settings,
+    read_env,
+)
+from jarvis.logs import tail
+from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError
+
+LOG_LINES = 5
+
+# Estados que devuelve el Programador de tareas (en inglés, sea cual sea el idioma de Windows).
+_STATES = {
+    None: "no programada",
+    "Ready": "programada (en espera)",
+    "Running": "programada y en ejecución",
+    "Queued": "programada (a punto de iniciar)",
+    "Disabled": "desactivada en el Programador de tareas",
+}
+
+TaskStateReader = Callable[[str], str | None]
+
+
+def status_report(
+    env: Mapping[str, str],
+    read_task_state: TaskStateReader | None,
+    logs: Mapping[str, Path],
+    log_lines: int = LOG_LINES,
+) -> list[str]:
+    """Líneas del informe. `read_task_state=None` significa que no es Windows."""
+    lines = ["Estado de JARVIS", ""]
+    lines += _config_lines(env)
+    lines.append("")
+    lines += _task_lines(read_task_state)
+    for label, log_file in logs.items():
+        lines += ["", f"Últimas líneas de {label} ({log_file}):"]
+        lines += [f"  {line}" for line in tail(log_file, log_lines)] or ["  (sin registros todavía)"]
+    return lines
+
+
+def run_status() -> None:
+    from jarvis.scheduler import task_state
+
+    report = status_report(
+        read_env(),
+        read_task_state=task_state if os.name == "nt" else None,
+        logs={"Telegram": TELEGRAM_LOG_FILE, "Resumen": SUMMARY_LOG_FILE},
+    )
+    print("\n".join(report))
+
+
+def _config_lines(env: Mapping[str, str]) -> list[str]:
+    lines: list[str] = []
+    try:
+        settings = load_settings(env)
+    except ConfigError as exc:
+        return [f"Configuración: ⚠ {exc}"]
+
+    source = "Google Calendar" if settings.calendar_source == "google" else "ejemplo (datos simulados)"
+    lines.append(f"Calendario: {source}")
+    summary = settings.summary
+    if summary.enabled:
+        channel = "Telegram" if summary.channel == "telegram" else f"Gmail ({summary.recipient})"
+        lines.append(f"Resumen diario: {channel}, de lunes a viernes a las {summary.send_time:%H:%M}")
+    else:
+        lines.append("Resumen diario: no configurado")
+
+    try:
+        load_telegram_settings(env)
+        lines.append("Telegram: bot configurado y cuenta vinculada")
+    except ConfigError as exc:
+        lines.append(f"Telegram: ⚠ {exc}")
+    return lines
+
+
+def _task_lines(read_task_state: TaskStateReader | None) -> list[str]:
+    if read_task_state is None:
+        return ["Tareas programadas: solo disponibles en Windows (en Mac o Linux se usa cron)."]
+    lines = ["Tareas programadas:"]
+    for name, label in ((SUMMARY_TASK, "Resumen diario"), (TELEGRAM_TASK, "Telegram en segundo plano")):
+        try:
+            state = read_task_state(name)
+        except SchedulerError as exc:
+            lines.append(f"  {label}: no se pudo consultar ({exc})")
+            continue
+        lines.append(f"  {label}: {_STATES.get(state, state)}")
+        if name == TELEGRAM_TASK and state == "Ready":
+            lines.append(
+                "    No está corriendo ahora: arranca al iniciar sesión, o ya mismo con "
+                "`uv run jarvis programar-telegram`.\n"
+                "    Revisa el registro de abajo por si se detuvo por un error."
+            )
+    return lines

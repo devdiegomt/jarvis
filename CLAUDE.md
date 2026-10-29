@@ -23,8 +23,11 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   Lógica del chat independiente del canal (`chat.py`). Ver `docs/adr/005-telegram-como-canal.md`.
   v0.5.1: HTTPS verificado con el almacén de certificados del sistema (`truststore`), para equipos
   con antivirus o proxy que inspeccionan el tráfico. Ver `docs/adr/006-verificacion-tls-sistema.md`.
-- **Siguiente (por definir):** por ejemplo, arrancar `jarvis telegram` con Windows, servidor en la
-  nube, o avisos de mensajes de clientes desde otra fuente (Gmail, CRM).
+- **v0.6 (hecha):** JARVIS en segundo plano al iniciar sesión en Windows (`programar-telegram`),
+  comando `estado`, registros rotativos y canal visible en `resumen --dry-run`.
+  Ver `docs/adr/007-telegram-en-segundo-plano.md`.
+- **Siguiente (por definir):** por ejemplo, avisos de mensajes de clientes desde otra fuente
+  (Gmail, CRM) o servidor en la nube.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
 Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar cada versión).
@@ -56,7 +59,9 @@ jarvis/
 │   ├── notify/         # canales de envío: Notifier (interfaz), consola, Gmail y Telegram
 │   ├── summary.py      # resumen diario: comentario de Claude, agenda, envío y reintentos
 │   ├── summary_cli.py  # comandos resumen, programar-resumen y quitar-resumen
-│   ├── scheduler.py    # Programador de tareas de Windows (y línea de cron)
+│   ├── scheduler.py    # Programador de tareas de Windows: resumen y Telegram (y líneas de cron)
+│   ├── status.py       # comando `jarvis estado`
+│   ├── logs.py         # registros rotativos (solo resultados, nunca contenido)
 │   ├── storage.py      # SQLite: registro de resúmenes enviados
 │   ├── memory.py       # SQLite: conversaciones persistentes del chat, retención y duplicados
 │   ├── confirmation.py # interpretación de respuestas s/n, común a todos los canales
@@ -64,7 +69,7 @@ jarvis/
 │   ├── telegram/       # canal de Telegram
 │   │   ├── client.py   # API de bots (urllib): enviar, botones, getUpdates, errores
 │   │   ├── bot.py      # ChatChannel de Telegram, lectura de mensajes (long polling), vinculación
-│   │   └── app.py      # comandos `jarvis telegram` y `jarvis telegram-vincular`
+│   │   └── app.py      # comandos telegram, telegram-vincular, programar-telegram y quitar-telegram
 │   ├── tools/          # una tool por archivo + registro central
 │   │   ├── __init__.py # tools integradas y build_registry()
 │   │   ├── registry.py # registro: nombre -> (schema, función), confirmación y errores
@@ -106,7 +111,10 @@ jarvis/
 - Toda tool que tenga efectos externos (enviar mensajes, crear eventos, borrar algo) debe pedir
   confirmación al usuario antes de ejecutarse. Las tools de solo lectura no la necesitan.
 - No loguear contenido sensible (mensajes completos, datos de clientes) en producción. El historial
-  de conversaciones se guarda solo en el equipo y se borra a los 30 días.
+  de conversaciones se guarda solo en el equipo y se borra a los 30 días. Los registros usan
+  `jarvis.logs` (rotativos).
+- Las tareas programadas corren solo con la sesión del usuario iniciada; nunca guardar su contraseña
+  de Windows en el Programador de tareas.
 
 ## Comandos
 - Instalar: `uv sync`
@@ -115,4 +123,6 @@ jarvis/
 - Resumen diario: `uv run jarvis resumen [--dry-run] [--force]`
 - Programar / quitar el resumen: `uv run jarvis programar-resumen` / `uv run jarvis quitar-resumen`
 - Telegram: `uv run jarvis telegram` (la primera vez, `uv run jarvis telegram-vincular`)
+- Telegram en segundo plano: `uv run jarvis programar-telegram` / `uv run jarvis quitar-telegram`
+- Estado: `uv run jarvis estado`
 - Tests: `uv run pytest`

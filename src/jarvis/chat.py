@@ -45,6 +45,8 @@ TIMEOUT_MARK = "⌛ Sin respuesta: cancelado"
 COMMANDS = {"start": "Empezar", "nuevo": "Conversación nueva", "ayuda": "Ver la ayuda"}
 
 logger = logging.getLogger("jarvis.chat")
+# Sin registro configurado (por ejemplo, en `telegram-vincular`), no se imprime nada extra.
+logger.addHandler(logging.NullHandler())
 
 
 class ChannelError(Exception):

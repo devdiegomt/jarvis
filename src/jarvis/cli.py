@@ -6,6 +6,8 @@
 - `uv run jarvis programar-resumen` / `quitar-resumen`: programa o quita el resumen diario.
 - `uv run jarvis telegram`: chatear con JARVIS por Telegram.
 - `uv run jarvis telegram-vincular`: obtener tu ID de Telegram (TELEGRAM_OWNER_ID).
+- `uv run jarvis programar-telegram` / `quitar-telegram`: JARVIS en segundo plano al iniciar sesión.
+- `uv run jarvis estado`: configuración, tareas programadas y registros.
 """
 
 import argparse
@@ -141,8 +143,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser("programar-resumen", help="Programa el resumen de lunes a viernes.")
     commands.add_parser("quitar-resumen", help="Quita la programación del resumen.")
-    commands.add_parser("telegram", help="Conecta JARVIS a tu bot de Telegram para chatear.")
+    telegram = commands.add_parser("telegram", help="Conecta JARVIS a tu bot de Telegram para chatear.")
+    telegram.add_argument("--programado", action="store_true", help=argparse.SUPPRESS)
     commands.add_parser("telegram-vincular", help="Muestra tu ID de Telegram para TELEGRAM_OWNER_ID.")
+    commands.add_parser("programar-telegram", help="Arranca JARVIS en segundo plano al iniciar sesión.")
+    commands.add_parser("quitar-telegram", help="Detiene JARVIS en segundo plano y quita el arranque.")
+    commands.add_parser("estado", help="Muestra la configuración, las tareas programadas y los registros.")
     return parser
 
 
@@ -160,11 +166,23 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "telegram":
         from jarvis.telegram.app import run_telegram
 
-        run_telegram()
+        run_telegram(scheduled=args.programado)
     elif args.command == "telegram-vincular":
         from jarvis.telegram.app import run_link
 
         run_link()
+    elif args.command == "programar-telegram":
+        from jarvis.telegram.app import run_schedule_install
+
+        run_schedule_install()
+    elif args.command == "quitar-telegram":
+        from jarvis.telegram.app import run_schedule_remove
+
+        run_schedule_remove()
+    elif args.command == "estado":
+        from jarvis.status import run_status
+
+        run_status()
     else:
         run_chat()
 

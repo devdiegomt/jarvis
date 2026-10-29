@@ -157,10 +157,31 @@ uv run jarvis telegram
 - Por ahora solo entiende mensajes de texto.
 
 El historial se guarda en tu equipo (`jarvis.db`) y las conversaciones de más de 30 días se borran
-solas. El log (`~/.config/jarvis/logs/telegram.log`) registra solo IDs y resultados, nunca el texto.
+solas. El log (`~/.config/jarvis/logs/telegram.log`) registra solo IDs y resultados, nunca el texto,
+y rota solo (unos 4 MB como máximo).
+
+### 4. Que JARVIS esté siempre disponible (Windows)
+
+Para no tener que dejar una terminal abierta:
+
+```bash
+uv run jarvis programar-telegram
+```
+
+JARVIS queda corriendo en segundo plano (sin ventanas) y arrancará solo cada vez que inicies sesión
+en Windows. Si el PC se suspende, se reconecta al despertar; si se detiene por un error, Windows lo
+reinicia hasta 3 veces. Solo funciona con tu sesión iniciada (no guarda tu contraseña de Windows).
+
+- Para comprobar cómo va: `uv run jarvis estado`.
+- Para detenerlo y quitar el arranque automático: `uv run jarvis quitar-telegram`.
+- Mientras corre en segundo plano, no abras `uv run jarvis telegram` en una terminal: solo puede
+  haber una copia por bot (la de segundo plano espera a que cierres la otra).
+- En Mac o Linux, el comando muestra la línea de `cron` (`@reboot`) que debes añadir.
 
 ### Problemas comunes
 
+- **JARVIS no responde**: ejecuta `uv run jarvis estado`. Muestra si la tarea en segundo plano está
+  corriendo y las últimas líneas del registro, donde aparece la causa si se detuvo.
 - **"El token del bot no es válido"**: revisa `TELEGRAM_BOT_TOKEN` (cópialo completo, con el número
   y los dos puntos).
 - **"Otra copia de JARVIS está usando este bot"**: solo puede haber un `jarvis telegram` corriendo
@@ -224,7 +245,8 @@ igual con la agenda sin comentario. Puede llegar por **Telegram** (recomendado) 
    uv run jarvis resumen
    ```
 
-   Solo se envía un resumen por día; usa `--force` para reenviarlo.
+   Solo se envía un resumen por día; usa `--force` para reenviarlo. En modo prueba (`--dry-run`),
+   al final se indica por qué canal se enviaría.
 
 3. Prográmalo (Windows). Si cambias de canal, vuelve a ejecutarlo:
 
@@ -240,6 +262,16 @@ igual con la agenda sin comentario. Puede llegar por **Telegram** (recomendado) 
 
 Cada ejecución queda registrada (solo el resultado, nunca el contenido) en
 `~/.config/jarvis/logs/resumen.log`.
+
+## Ver el estado
+
+```bash
+uv run jarvis estado
+```
+
+Resume la configuración (calendario, canal del resumen, Telegram), si las tareas programadas están
+activas y las últimas líneas de los registros. Los registros solo contienen resultados, nunca el
+texto de tus mensajes.
 
 ## Configuración
 
