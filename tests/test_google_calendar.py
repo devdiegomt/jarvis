@@ -9,6 +9,7 @@ from googleapiclient.errors import HttpError
 
 from jarvis.agenda import CalendarError, CalendarNotAuthorizedError
 from jarvis.agenda.google import GoogleCalendar, to_meeting
+from jarvis.google_auth import GoogleAuthError, GoogleNotAuthorizedError
 
 BOGOTA = ZoneInfo("America/Bogota")  # UTC-5, sin horario de verano
 
@@ -173,4 +174,21 @@ def test_api_errors_become_calendar_errors(error: Exception, error_type: type, e
     calendar = make_calendar(FakeService(error))
 
     with pytest.raises(error_type, match=expected):
+        calendar.list_meetings(date(2026, 10, 29), date(2026, 10, 29))
+
+
+@pytest.mark.parametrize(
+    ("error", "error_type"),
+    [
+        (GoogleNotAuthorizedError("sin token"), CalendarNotAuthorizedError),
+        (GoogleAuthError("sin red"), CalendarError),
+    ],
+)
+def test_auth_errors_from_service_factory_become_calendar_errors(error: Exception, error_type: type) -> None:
+    def factory() -> FakeService:
+        raise error
+
+    calendar = GoogleCalendar(service_factory=factory, calendar_id="primary", timezone=BOGOTA)
+
+    with pytest.raises(error_type, match=str(error)):
         calendar.list_meetings(date(2026, 10, 29), date(2026, 10, 29))

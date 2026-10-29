@@ -7,7 +7,7 @@ from jarvis.agenda.base import Meeting
 # (hora, duración en minutos, título, participante)
 _WEEKDAY_MEETINGS: list[tuple[time, int, str, str]] = [
     (time(9, 30), 30, "Daily del equipo", "Equipo de producto"),
-    (time(12, 0), 60, "Revisión de propuesta", "Laura Gómez (cliente)"),
+    (time(12, 0), 60, "Revisión de propuesta del cliente", "Laura Gómez"),
     (time(16, 30), 45, "Planificación semanal", "Carlos Ruiz"),
 ]
 

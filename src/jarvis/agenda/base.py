@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class CalendarError(Exception):
@@ -37,3 +37,33 @@ class CalendarSource(Protocol):
     def list_meetings(self, start: date, end: date) -> list[Meeting]:
         """Reuniones entre `start` y `end` (ambas fechas incluidas), ordenadas por inicio."""
         ...
+
+
+def meeting_to_dict(meeting: Meeting) -> dict[str, Any]:
+    """Representación JSON de una reunión, pensada para el modelo."""
+    if meeting.all_day:
+        start, end = meeting.start.isoformat(), meeting.end.isoformat()
+    else:
+        start, end = (f"{dt:%Y-%m-%d %H:%M}" for dt in (meeting.start, meeting.end))
+    data: dict[str, Any] = {
+        "titulo": meeting.title,
+        "inicio": start,
+        "fin": end,
+        "todo_el_dia": meeting.all_day,
+    }
+    if meeting.location:
+        data["ubicacion"] = meeting.location
+    if meeting.attendees:
+        data["participantes"] = list(meeting.attendees)
+    return data
+
+
+def meeting_to_line(meeting: Meeting) -> str:
+    """Una línea de texto legible, por ejemplo: `09:30-10:00  Demo (con Ana) · Sala 1`."""
+    when = "Todo el día" if meeting.all_day else f"{meeting.start:%H:%M}-{meeting.end:%H:%M}"
+    line = f"{when}  {meeting.title}"
+    if meeting.attendees:
+        line += f" (con {', '.join(meeting.attendees)})"
+    if meeting.location:
+        line += f" · {meeting.location}"
+    return line

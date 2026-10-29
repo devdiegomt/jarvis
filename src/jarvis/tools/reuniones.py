@@ -4,7 +4,7 @@ import json
 from datetime import date
 from typing import Any
 
-from jarvis.agenda import CalendarSource, Meeting
+from jarvis.agenda import CalendarSource, meeting_to_dict
 from jarvis.tools.registry import Tool
 
 MAX_RANGE_DAYS = 14
@@ -25,7 +25,7 @@ def build_tool(calendar: CalendarSource) -> Tool:
         result: dict[str, Any] = {
             "desde": start.isoformat(),
             "hasta": end.isoformat(),
-            "reuniones": [_meeting_to_dict(m) for m in meetings],
+            "reuniones": [meeting_to_dict(m) for m in meetings],
         }
         if not meetings:
             result["mensaje"] = "No hay reuniones en ese periodo."
@@ -64,20 +64,3 @@ def _parse_date(value: str, field: str) -> date:
     except ValueError as exc:
         raise ValueError(f"{field}='{value}' no es válida; usa el formato YYYY-MM-DD.") from exc
 
-
-def _meeting_to_dict(meeting: Meeting) -> dict[str, Any]:
-    if meeting.all_day:
-        start, end = meeting.start.isoformat(), meeting.end.isoformat()
-    else:
-        start, end = (f"{dt:%Y-%m-%d %H:%M}" for dt in (meeting.start, meeting.end))
-    data: dict[str, Any] = {
-        "titulo": meeting.title,
-        "inicio": start,
-        "fin": end,
-        "todo_el_dia": meeting.all_day,
-    }
-    if meeting.location:
-        data["ubicacion"] = meeting.location
-    if meeting.attendees:
-        data["participantes"] = list(meeting.attendees)
-    return data

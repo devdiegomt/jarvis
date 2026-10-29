@@ -13,14 +13,17 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
 - **v0.2 (hecha):** Google Calendar real (solo lectura) con OAuth de escritorio, fuentes de
   calendario intercambiables (`JARVIS_CALENDAR=sample|google`) y tests en GitHub Actions.
   Ver `docs/adr/002-google-calendar-oauth-escritorio.md`.
-- **v0.3 (siguiente):** tarea programada que envía el resumen del día.
-- v0.4: canal de WhatsApp.
+- **v0.3 (hecha):** resumen diario por Gmail (lunes a viernes, Programador de tareas de Windows),
+  con comentario de Claude y agenda generada en código; SQLite para no duplicar envíos.
+  Ver `docs/adr/003-resumen-diario-gmail.md`.
+- **v0.4 (siguiente):** canal de WhatsApp.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
 ## Stack
 - Python 3.12
 - SDK oficial de Anthropic (`anthropic`), con tool use manual (loop propio, no frameworks de agentes)
-- Google Calendar API (`google-api-python-client`, `google-auth-oauthlib`), permiso de solo lectura
+- Google Calendar API y Gmail API (`google-api-python-client`, `google-auth-oauthlib`):
+  `calendar.readonly` y, si el resumen está activo, `gmail.send`
 - Modelo configurable por variable de entorno `JARVIS_MODEL` (default: `claude-sonnet-5-5`)
 - SQLite para persistencia local (más adelante Postgres)
 - `python-dotenv` para configuración, `pytest` para tests
@@ -36,14 +39,19 @@ jarvis/
 │   ├── agenda/         # fuentes de calendario
 │   │   ├── base.py     # Meeting, CalendarSource (interfaz) y errores
 │   │   ├── sample.py   # datos de ejemplo
-│   │   ├── google.py   # Google Calendar (lectura)
-│   │   └── google_auth.py # OAuth de escritorio y token
+│   │   └── google.py   # Google Calendar (lectura)
+│   ├── google_auth.py  # OAuth de escritorio con Google, token y permisos
+│   ├── notify/         # canales de envío: Notifier (interfaz), consola y Gmail
+│   ├── summary.py      # resumen diario: comentario de Claude, agenda, envío y reintentos
+│   ├── summary_cli.py  # comandos resumen, programar-resumen y quitar-resumen
+│   ├── scheduler.py    # Programador de tareas de Windows (y línea de cron)
+│   ├── storage.py      # SQLite: registro de resúmenes enviados
 │   ├── tools/          # una tool por archivo + registro central
 │   │   ├── __init__.py # tools integradas y build_registry()
 │   │   ├── registry.py # registro: nombre -> (schema, función), confirmación y errores
 │   │   └── ...
-│   ├── memory.py       # historial y persistencia (SQLite) — pendiente; en v0.1 el historial vive en Agent
-│   └── cli.py          # punto de entrada por consola (chat y google-login)
+│   ├── memory.py       # historial de conversación persistente — pendiente; hoy vive en Agent
+│   └── cli.py          # punto de entrada por consola (chat, google-login y subcomandos)
 ├── tests/
 ├── .github/workflows/  # CI: pytest en cada PR y push a main
 ├── docs/
@@ -60,13 +68,16 @@ jarvis/
   Agregar una tool nueva no debe requerir tocar `agent.py`.
 - El loop del agente tiene un límite máximo de iteraciones para evitar ciclos infinitos.
 - Errores de una tool se devuelven al modelo como resultado con `is_error`, no rompen el programa.
-- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google) se mockean en los tests.
+- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google) y al
+  sistema (Programador de tareas) se mockean en los tests.
 - Al terminar una versión: actualizar este archivo (roadmap) y agregar un ADR si hubo una decisión relevante.
 
 ## Seguridad (obligatorio)
 - Nunca escribir keys, tokens ni credenciales en el código ni en commits. Todo va en `.env` (ignorado por git).
 - Credenciales y tokens de OAuth viven fuera del repo (por defecto `~/.config/jarvis/`). Pedir siempre
-  el permiso mínimo (hoy `calendar.readonly`).
+  el permiso mínimo (hoy `calendar.readonly` y, solo con el resumen activo, `gmail.send`).
+- Las acciones programadas (como el resumen diario) no son tools: el destinatario es fijo por
+  configuración y el modelo no puede cambiarlo ni disparar envíos.
 - Mantener `.env.example` actualizado con los nombres de las variables, sin valores reales.
 - Toda tool que tenga efectos externos (enviar mensajes, crear eventos, borrar algo) debe pedir
   confirmación al usuario antes de ejecutarse. Las tools de solo lectura no la necesitan.
@@ -75,5 +86,7 @@ jarvis/
 ## Comandos
 - Instalar: `uv sync`
 - Correr: `uv run jarvis`
-- Autorizar Google Calendar: `uv run jarvis google-login`
+- Autorizar Google: `uv run jarvis google-login`
+- Resumen diario: `uv run jarvis resumen [--dry-run] [--force]`
+- Programar / quitar el resumen: `uv run jarvis programar-resumen` / `uv run jarvis quitar-resumen`
 - Tests: `uv run pytest`

@@ -1,6 +1,13 @@
 """Fuentes de calendario de JARVIS (ejemplo y Google Calendar)."""
 
-from jarvis.agenda.base import CalendarError, CalendarNotAuthorizedError, CalendarSource, Meeting
+from jarvis.agenda.base import (
+    CalendarError,
+    CalendarNotAuthorizedError,
+    CalendarSource,
+    Meeting,
+    meeting_to_dict,
+    meeting_to_line,
+)
 from jarvis.agenda.sample import SampleCalendar
 from jarvis.config import ConfigError, Settings
 
@@ -33,4 +40,6 @@ __all__ = [
     "Meeting",
     "SampleCalendar",
     "build_calendar",
+    "meeting_to_dict",
+    "meeting_to_line",
 ]

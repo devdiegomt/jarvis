@@ -3,7 +3,7 @@
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import datetime, time, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 DEFAULT_MODEL = "claude-sonnet-5-5"
 CALENDAR_SOURCES = ("sample", "google")
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "jarvis"
+DEFAULT_SUMMARY_TIME = time(7, 0)
+# Registro de ejecuciones del resumen: solo resultados, nunca el contenido.
+SUMMARY_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "resumen.log"
 
 
 class ConfigError(Exception):
@@ -26,12 +29,26 @@ class GoogleSettings:
 
 
 @dataclass(frozen=True)
+class SummarySettings:
+    """Resumen diario por correo. `recipient` vacío significa que está desactivado."""
+
+    recipient: str
+    send_time: time
+    db_path: Path
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.recipient)
+
+
+@dataclass(frozen=True)
 class Settings:
     api_key: str
     model: str
     timezone: tzinfo
     calendar_source: str
     google: GoogleSettings
+    summary: SummarySettings
 
 
 def read_env() -> Mapping[str, str]:
@@ -54,6 +71,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         timezone=load_timezone(env),
         calendar_source=_load_calendar_source(env),
         google=load_google_settings(env),
+        summary=load_summary_settings(env),
     )
 
 
@@ -79,6 +97,29 @@ def load_google_settings(env: Mapping[str, str]) -> GoogleSettings:
         token_file=_path(env, "GOOGLE_TOKEN_FILE", DEFAULT_CONFIG_DIR / "token.json"),
         calendar_id=_get(env, "GOOGLE_CALENDAR_ID") or "primary",
     )
+
+
+def load_summary_settings(env: Mapping[str, str]) -> SummarySettings:
+    recipient = _get(env, "JARVIS_RESUMEN_DESTINATARIO")
+    if recipient and ("@" not in recipient or " " in recipient):
+        raise ConfigError(f"JARVIS_RESUMEN_DESTINATARIO='{recipient}' no parece un correo válido.")
+    return SummarySettings(
+        recipient=recipient,
+        send_time=_load_time(env, "JARVIS_RESUMEN_HORA", DEFAULT_SUMMARY_TIME),
+        db_path=_path(env, "JARVIS_DB_PATH", DEFAULT_CONFIG_DIR / "jarvis.db"),
+    )
+
+
+def _load_time(env: Mapping[str, str], name: str, default: time) -> time:
+    value = _get(env, name)
+    if not value:
+        return default
+    try:
+        return datetime.strptime(value, "%H:%M").time()
+    except ValueError as exc:
+        raise ConfigError(
+            f"{name}='{value}' no es una hora válida. Usa el formato HH:MM, por ejemplo 07:00."
+        ) from exc
 
 
 def _load_calendar_source(env: Mapping[str, str]) -> str:
