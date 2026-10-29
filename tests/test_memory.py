@@ -40,7 +40,7 @@ def store(tmp_path: Path, clock: Clock) -> ConversationStore:
 
 
 def load(store: ConversationStore, prompt: str = "prompt-1"):  # type: ignore[no-untyped-def]
-    return store.load_active("whatsapp", "573001234567", lambda: prompt)
+    return store.load_active("telegram", "987654321", lambda: prompt)
 
 
 def test_new_conversation_when_none_exists(store: ConversationStore) -> None:
@@ -92,7 +92,7 @@ def test_close_active_forces_a_new_conversation(store: ConversationStore) -> Non
     conversation = load(store)
     store.save(conversation)
 
-    store.close_active("whatsapp", "573001234567")
+    store.close_active("telegram", "987654321")
 
     assert load(store).id is None
 
@@ -101,24 +101,24 @@ def test_conversations_are_per_user(store: ConversationStore) -> None:
     conversation = load(store)
     store.save(conversation)
 
-    assert store.load_active("whatsapp", "otro", lambda: "p").id is None
+    assert store.load_active("telegram", "otro", lambda: "p").id is None
 
 
 def test_mark_processed_detects_duplicates(store: ConversationStore) -> None:
-    assert store.mark_processed("wamid.1")
-    assert not store.mark_processed("wamid.1")
-    assert store.mark_processed("wamid.2")
+    assert store.mark_processed("telegram:1")
+    assert not store.mark_processed("telegram:1")
+    assert store.mark_processed("telegram:2")
 
 
 def test_purge_removes_old_data(store: ConversationStore, clock: Clock) -> None:
     old = load(store)
     store.save(old)
-    store.mark_processed("wamid.viejo")
+    store.mark_processed("telegram:viejo")
 
     clock.advance(days=31)
-    recent = store.load_active("whatsapp", "otro", lambda: "p")
+    recent = store.load_active("telegram", "otro", lambda: "p")
     store.save(recent)
 
     assert store.purge_old() == 1
-    assert store.mark_processed("wamid.viejo")  # su registro también se borró
-    assert store.load_active("whatsapp", "otro", lambda: "p").id == recent.id
+    assert store.mark_processed("telegram:viejo")  # su registro también se borró
+    assert store.load_active("telegram", "otro", lambda: "p").id == recent.id

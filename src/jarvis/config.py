@@ -15,9 +15,8 @@ DEFAULT_CONFIG_DIR = Path.home() / ".config" / "jarvis"
 DEFAULT_SUMMARY_TIME = time(7, 0)
 # Registros de ejecución: solo resultados, nunca el contenido de los mensajes.
 SUMMARY_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "resumen.log"
-WHATSAPP_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "whatsapp.log"
-DEFAULT_WHATSAPP_PORT = 8000
-DEFAULT_WHATSAPP_API_VERSION = "v25.0"
+TELEGRAM_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "telegram.log"
+SUMMARY_CHANNELS = ("gmail", "telegram")
 
 
 class ConfigError(Exception):
@@ -33,26 +32,26 @@ class GoogleSettings:
 
 @dataclass(frozen=True)
 class SummarySettings:
-    """Resumen diario por correo. `recipient` vacío significa que está desactivado."""
+    """Resumen diario. Por Gmail, `recipient` vacío significa que está desactivado."""
 
+    channel: str  # "gmail" o "telegram"
     recipient: str
     send_time: time
     db_path: Path
 
     @property
     def enabled(self) -> bool:
-        return bool(self.recipient)
+        return self.channel == "telegram" or bool(self.recipient)
+
+    @property
+    def uses_gmail(self) -> bool:
+        return self.channel == "gmail" and bool(self.recipient)
 
 
 @dataclass(frozen=True)
-class WhatsAppSettings:
-    access_token: str
-    phone_number_id: str
-    app_secret: str
-    verify_token: str
-    owner_number: str  # solo dígitos, con código de país (ej. 573001234567)
-    port: int
-    api_version: str
+class TelegramSettings:
+    bot_token: str
+    owner_id: str | None  # ID numérico de la cuenta de Telegram del usuario
 
 
 @dataclass(frozen=True)
@@ -114,55 +113,41 @@ def load_google_settings(env: Mapping[str, str]) -> GoogleSettings:
 
 
 def load_summary_settings(env: Mapping[str, str]) -> SummarySettings:
+    channel = (_get(env, "JARVIS_RESUMEN_CANAL") or "gmail").lower()
+    if channel not in SUMMARY_CHANNELS:
+        raise ConfigError(
+            f"JARVIS_RESUMEN_CANAL='{channel}' no es válido. Opciones: {', '.join(SUMMARY_CHANNELS)}."
+        )
     recipient = _get(env, "JARVIS_RESUMEN_DESTINATARIO")
     if recipient and ("@" not in recipient or " " in recipient):
         raise ConfigError(f"JARVIS_RESUMEN_DESTINATARIO='{recipient}' no parece un correo válido.")
     return SummarySettings(
+        channel=channel,
         recipient=recipient,
         send_time=_load_time(env, "JARVIS_RESUMEN_HORA", DEFAULT_SUMMARY_TIME),
         db_path=_path(env, "JARVIS_DB_PATH", DEFAULT_CONFIG_DIR / "jarvis.db"),
     )
 
 
-def load_whatsapp_settings(env: Mapping[str, str]) -> WhatsAppSettings:
-    """Configuración del canal de WhatsApp. Todas las credenciales son obligatorias."""
-    required = {
-        name: _get(env, name)
-        for name in (
-            "WHATSAPP_ACCESS_TOKEN",
-            "WHATSAPP_PHONE_NUMBER_ID",
-            "WHATSAPP_APP_SECRET",
-            "WHATSAPP_VERIFY_TOKEN",
-            "WHATSAPP_OWNER_NUMBER",
-        )
-    }
-    missing = [name for name, value in required.items() if not value]
-    if missing:
-        raise ConfigError(f"Faltan variables de WhatsApp en tu .env: {', '.join(missing)}.")
+def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:
+    """Configuración del bot de Telegram.
 
-    owner = normalize_phone(required["WHATSAPP_OWNER_NUMBER"])
-    if not 8 <= len(owner) <= 15:
+    `require_owner=False` sirve para `telegram-vincular`, que es justo el paso que averigua el ID.
+    """
+    token = _get(env, "TELEGRAM_BOT_TOKEN")
+    if not token:
+        raise ConfigError("Falta TELEGRAM_BOT_TOKEN. Crea el bot con @BotFather (ver README).")
+    if ":" not in token or " " in token:
+        raise ConfigError("TELEGRAM_BOT_TOKEN no parece un token de bot válido (formato 123456:ABC…).")
+
+    owner_id = _get(env, "TELEGRAM_OWNER_ID") or None
+    if owner_id is not None and not owner_id.isdigit():
+        raise ConfigError(f"TELEGRAM_OWNER_ID='{owner_id}' debe ser un número.")
+    if owner_id is None and require_owner:
         raise ConfigError(
-            "WHATSAPP_OWNER_NUMBER debe ser tu número con código de país, por ejemplo 573001234567."
+            "Falta TELEGRAM_OWNER_ID. Ejecuta `uv run jarvis telegram-vincular` para obtener tu ID."
         )
-    port_text = _get(env, "WHATSAPP_PORT") or str(DEFAULT_WHATSAPP_PORT)
-    if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
-        raise ConfigError(f"WHATSAPP_PORT='{port_text}' no es un puerto válido.")
-
-    return WhatsAppSettings(
-        access_token=required["WHATSAPP_ACCESS_TOKEN"],
-        phone_number_id=required["WHATSAPP_PHONE_NUMBER_ID"],
-        app_secret=required["WHATSAPP_APP_SECRET"],
-        verify_token=required["WHATSAPP_VERIFY_TOKEN"],
-        owner_number=owner,
-        port=int(port_text),
-        api_version=_get(env, "WHATSAPP_API_VERSION") or DEFAULT_WHATSAPP_API_VERSION,
-    )
-
-
-def normalize_phone(number: str) -> str:
-    """Deja solo los dígitos: `+57 300-123 4567` → `573001234567`."""
-    return "".join(char for char in number if char.isdigit())
+    return TelegramSettings(bot_token=token, owner_id=owner_id)
 
 
 def _load_time(env: Mapping[str, str], name: str, default: time) -> time:

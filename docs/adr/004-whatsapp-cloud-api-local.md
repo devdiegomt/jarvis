@@ -1,6 +1,6 @@
 # ADR 004: Chat por WhatsApp con la Cloud API de Meta, servidor local y ngrok
 
-- **Estado:** Aceptada
+- **Estado:** Sustituida por [ADR 005](005-telegram-como-canal.md) (v0.5). El código de WhatsApp se eliminó.
 - **Fecha:** 2026-10-29
 - **Versión:** v0.4
 

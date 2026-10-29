@@ -11,7 +11,7 @@ from jarvis.config import (
     DEFAULT_MODEL,
     ConfigError,
     load_settings,
-    load_whatsapp_settings,
+    load_telegram_settings,
 )
 
 BASE_ENV = {"ANTHROPIC_API_KEY": "sk-test"}
@@ -110,29 +110,49 @@ def test_invalid_summary_settings_fail(name: str, value: str) -> None:
         load_settings({**BASE_ENV, name: value})
 
 
-WHATSAPP_ENV = {
-    "WHATSAPP_ACCESS_TOKEN": "token",
-    "WHATSAPP_PHONE_NUMBER_ID": "12345",
-    "WHATSAPP_APP_SECRET": "secreto",
-    "WHATSAPP_VERIFY_TOKEN": "verificacion",
-    "WHATSAPP_OWNER_NUMBER": "+57 300-123 4567",
-}
+TELEGRAM_ENV = {"TELEGRAM_BOT_TOKEN": "123456:ABC-def", "TELEGRAM_OWNER_ID": "987654321"}
 
 
-def test_whatsapp_settings() -> None:
-    whatsapp = load_whatsapp_settings(WHATSAPP_ENV)
+def test_telegram_settings() -> None:
+    telegram = load_telegram_settings(TELEGRAM_ENV)
 
-    assert whatsapp.owner_number == "573001234567"
-    assert whatsapp.port == 8000
-    assert whatsapp.api_version == "v25.0"
-
-
-def test_whatsapp_missing_variables_are_listed() -> None:
-    with pytest.raises(ConfigError, match="WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN"):
-        load_whatsapp_settings({**WHATSAPP_ENV, "WHATSAPP_APP_SECRET": "", "WHATSAPP_VERIFY_TOKEN": " "})
+    assert telegram.bot_token == "123456:ABC-def"
+    assert telegram.owner_id == "987654321"
 
 
-@pytest.mark.parametrize(("name", "value"), [("WHATSAPP_OWNER_NUMBER", "123"), ("WHATSAPP_PORT", "puerto")])
-def test_whatsapp_invalid_values(name: str, value: str) -> None:
+def test_telegram_owner_is_optional_only_for_linking() -> None:
+    env = {"TELEGRAM_BOT_TOKEN": "123456:ABC-def"}
+
+    assert load_telegram_settings(env, require_owner=False).owner_id is None
+    with pytest.raises(ConfigError, match="telegram-vincular"):
+        load_telegram_settings(env)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("TELEGRAM_BOT_TOKEN", ""), ("TELEGRAM_BOT_TOKEN", "sin-dos-puntos"), ("TELEGRAM_OWNER_ID", "@usuario")],
+)
+def test_telegram_invalid_values(name: str, value: str) -> None:
     with pytest.raises(ConfigError, match=name):
-        load_whatsapp_settings({**WHATSAPP_ENV, name: value})
+        load_telegram_settings({**TELEGRAM_ENV, name: value})
+
+
+def test_summary_channel() -> None:
+    gmail = load_settings({**BASE_ENV, "JARVIS_RESUMEN_DESTINATARIO": "yo@example.com"}).summary
+    telegram = load_settings({**BASE_ENV, "JARVIS_RESUMEN_CANAL": "Telegram"}).summary
+
+    assert gmail.channel == "gmail" and gmail.enabled and gmail.uses_gmail
+    assert telegram.channel == "telegram" and telegram.enabled and not telegram.uses_gmail
+
+
+def test_telegram_summary_never_needs_gmail() -> None:
+    summary = load_settings(
+        {**BASE_ENV, "JARVIS_RESUMEN_CANAL": "telegram", "JARVIS_RESUMEN_DESTINATARIO": "yo@example.com"}
+    ).summary
+
+    assert not summary.uses_gmail
+
+
+def test_invalid_summary_channel() -> None:
+    with pytest.raises(ConfigError, match="JARVIS_RESUMEN_CANAL"):
+        load_settings({**BASE_ENV, "JARVIS_RESUMEN_CANAL": "whatsapp"})

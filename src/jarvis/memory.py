@@ -1,4 +1,4 @@
-"""Historial de conversaciones persistente en SQLite (hoy lo usa el canal de WhatsApp).
+"""Historial de conversaciones persistente en SQLite (hoy lo usa el chat de Telegram).
 
 Una conversación termina tras un periodo de inactividad o cuando el usuario pide una nueva.
 Nunca se recortan mensajes de una conversación en curso: el historial solo crece, porque

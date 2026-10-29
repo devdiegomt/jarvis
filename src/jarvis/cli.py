@@ -4,7 +4,8 @@
 - `uv run jarvis google-login`: autoriza el acceso a Google.
 - `uv run jarvis resumen [--dry-run] [--force]`: envía el resumen del día.
 - `uv run jarvis programar-resumen` / `quitar-resumen`: programa o quita el resumen diario.
-- `uv run jarvis whatsapp`: servidor para chatear con JARVIS por WhatsApp.
+- `uv run jarvis telegram`: chatear con JARVIS por Telegram.
+- `uv run jarvis telegram-vincular`: obtener tu ID de Telegram (TELEGRAM_OWNER_ID).
 """
 
 import argparse
@@ -113,8 +114,8 @@ def run_google_login() -> None:
         print(f"Error de configuración: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # Permiso mínimo: Gmail solo si el resumen diario está configurado.
-    scopes = [CALENDAR_SCOPE] + ([GMAIL_SEND_SCOPE] if summary.enabled else [])
+    # Permiso mínimo: Gmail solo si el resumen diario se envía por Gmail.
+    scopes = [CALENDAR_SCOPE] + ([GMAIL_SEND_SCOPE] if summary.uses_gmail else [])
     print(f"Vas a autorizar a JARVIS a {describe_scopes(scopes)}.")
     try:
         login(google.credentials_file, google.token_file, scopes)
@@ -133,14 +134,15 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("google-login", help="Autoriza el acceso a Google (Calendar y Gmail).")
 
-    summary = commands.add_parser("resumen", help="Envía por correo el resumen del día.")
+    summary = commands.add_parser("resumen", help="Envía el resumen del día (Telegram o Gmail).")
     summary.add_argument("--dry-run", action="store_true", help="Muestra el correo sin enviarlo.")
     summary.add_argument("--force", action="store_true", help="Lo envía aunque ya se haya enviado hoy.")
     summary.add_argument("--programado", action="store_true", help=argparse.SUPPRESS)
 
     commands.add_parser("programar-resumen", help="Programa el resumen de lunes a viernes.")
     commands.add_parser("quitar-resumen", help="Quita la programación del resumen.")
-    commands.add_parser("whatsapp", help="Arranca el servidor para chatear por WhatsApp.")
+    commands.add_parser("telegram", help="Conecta JARVIS a tu bot de Telegram para chatear.")
+    commands.add_parser("telegram-vincular", help="Muestra tu ID de Telegram para TELEGRAM_OWNER_ID.")
     return parser
 
 
@@ -155,10 +157,14 @@ def main(argv: list[str] | None = None) -> None:
         summary_cli.run_schedule_install()
     elif args.command == "quitar-resumen":
         summary_cli.run_schedule_remove()
-    elif args.command == "whatsapp":
-        from jarvis.whatsapp.app import run_whatsapp
+    elif args.command == "telegram":
+        from jarvis.telegram.app import run_telegram
 
-        run_whatsapp()
+        run_telegram()
+    elif args.command == "telegram-vincular":
+        from jarvis.telegram.app import run_link
+
+        run_link()
     else:
         run_chat()
 

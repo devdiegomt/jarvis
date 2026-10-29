@@ -10,7 +10,15 @@ from typing import NoReturn
 import anthropic
 
 from jarvis.agenda import CalendarError, CalendarSource, build_calendar
-from jarvis.config import SUMMARY_LOG_FILE, ConfigError, Settings, load_settings
+from jarvis.config import (
+    SUMMARY_LOG_FILE,
+    ConfigError,
+    Settings,
+    TelegramSettings,
+    load_settings,
+    load_telegram_settings,
+    read_env,
+)
 from jarvis.notify import ConsoleNotifier, NotificationError, Notifier
 from jarvis.storage import SummaryLog
 from jarvis.summary import DailySummary, run_with_retries, send_daily_summary
@@ -25,6 +33,11 @@ logger = logging.getLogger("jarvis.resumen")
 # Sin archivo de log configurado (modo prueba), los mensajes no se duplican en la consola.
 logger.addHandler(logging.NullHandler())
 
+DISABLED_MESSAGE = (
+    "El resumen no está configurado: usa JARVIS_RESUMEN_CANAL=telegram, o define "
+    "JARVIS_RESUMEN_DESTINATARIO para recibirlo por Gmail."
+)
+
 
 def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
     """`jarvis resumen`. Con `pythonw` no hay consola: el resultado queda en el log."""
@@ -32,16 +45,17 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
         _setup_log_file()
     settings = _load_settings_or_exit()
     if not dry_run and not settings.summary.enabled:
-        _fail("Define JARVIS_RESUMEN_DESTINATARIO en tu .env para enviar el resumen.")
+        _fail(DISABLED_MESSAGE)
 
     calendar = _build_calendar_or_exit(settings)
+    notifier = ConsoleNotifier() if dry_run else _build_notifier(settings)
     day = datetime.now(settings.timezone).date()
 
     def attempt() -> DailySummary | None:
         return send_daily_summary(
             day=day,
             calendar=calendar,
-            notifier=ConsoleNotifier() if dry_run else _gmail_notifier(settings),
+            notifier=notifier,
             client=anthropic.Anthropic(api_key=settings.api_key),
             model=settings.model,
             log=None if dry_run else SummaryLog(settings.summary.db_path),
@@ -76,21 +90,17 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
             "Resumen del %s enviado (%d reuniones, comentario de IA: %s).",
             day, summary.meetings_count, "sí" if summary.ai_generated else "no",
         )
-        print(f"Resumen enviado a {settings.summary.recipient}.")
+        print(f"Resumen enviado por {_destination(settings)}.")
 
 
 def run_schedule_install() -> None:
     """`jarvis programar-resumen`: comprueba la configuración y registra la tarea."""
-    from jarvis.google_auth import GMAIL_SEND_SCOPE, GoogleAuthError, load_credentials
     from jarvis.scheduler import SchedulerError, cron_line, install_windows_task, summary_command
 
     settings = _load_settings_or_exit()
     if not settings.summary.enabled:
-        _fail("Define JARVIS_RESUMEN_DESTINATARIO en tu .env antes de programar el resumen.")
-    try:
-        load_credentials(settings.google.token_file, [GMAIL_SEND_SCOPE])
-    except GoogleAuthError as exc:
-        _fail(str(exc))
+        _fail(DISABLED_MESSAGE)
+    _check_channel_ready(settings)
     if settings.calendar_source == "sample":
         print("Aviso: JARVIS_CALENDAR=sample, así que el resumen usará reuniones de ejemplo.")
 
@@ -107,7 +117,7 @@ def run_schedule_install() -> None:
         install_windows_task(command, settings.summary.send_time, tomorrow)
     except SchedulerError as exc:
         _fail(str(exc))
-    print(f"Listo: recibirás el resumen de lunes a viernes a las {hour} en {settings.summary.recipient}.")
+    print(f"Listo: recibirás el resumen de lunes a viernes a las {hour} por {_destination(settings)}.")
     print("Lo verás en el Programador de tareas de Windows, carpeta JARVIS.")
     print("Corre solo con tu sesión iniciada; si el PC estaba apagado, se ejecuta al encenderlo.")
 
@@ -126,10 +136,51 @@ def run_schedule_remove() -> None:
     print("Listo: ya no se enviará el resumen diario.")
 
 
-def _gmail_notifier(settings: Settings) -> Notifier:
+def _build_notifier(settings: Settings) -> Notifier:
+    if settings.summary.channel == "telegram":
+        from jarvis.notify.telegram import TelegramNotifier
+        from jarvis.telegram.client import TelegramClient
+
+        telegram = _load_telegram_or_exit()
+        assert telegram.owner_id is not None
+        return TelegramNotifier(TelegramClient(telegram.bot_token), telegram.owner_id)
+
     from jarvis.notify.gmail import GmailNotifier, gmail_service_factory
 
     return GmailNotifier(gmail_service_factory(settings.google.token_file), settings.summary.recipient)
+
+
+def _check_channel_ready(settings: Settings) -> None:
+    """Antes de programar, comprueba que el canal del resumen esté listo para enviar."""
+    if settings.summary.channel == "telegram":
+        from jarvis.telegram.client import TelegramClient, TelegramError
+
+        telegram = _load_telegram_or_exit()
+        try:
+            TelegramClient(telegram.bot_token).get_me()
+        except TelegramError as exc:
+            _fail(f"Error de Telegram: {exc}")
+        return
+
+    from jarvis.google_auth import GMAIL_SEND_SCOPE, GoogleAuthError, load_credentials
+
+    try:
+        load_credentials(settings.google.token_file, [GMAIL_SEND_SCOPE])
+    except GoogleAuthError as exc:
+        _fail(str(exc))
+
+
+def _destination(settings: Settings) -> str:
+    if settings.summary.channel == "telegram":
+        return "Telegram"
+    return f"Gmail a {settings.summary.recipient}"
+
+
+def _load_telegram_or_exit() -> TelegramSettings:
+    try:
+        return load_telegram_settings(read_env())
+    except ConfigError as exc:
+        _fail(f"Error de configuración: {exc}")
 
 
 def _load_settings_or_exit() -> Settings:
