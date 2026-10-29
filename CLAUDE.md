@@ -8,8 +8,9 @@ portafolio y un posible producto, así que el código debe ser limpio, documenta
 El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pida en cada sesión.
 
 ## Roadmap
-- **v0.1 (actual):** loop del agente por consola con tools simuladas.
-- v0.2: Google Calendar real (lectura).
+- **v0.1 (hecha):** loop del agente por consola con tools simuladas (`get_reuniones`, `enviar_mensaje`),
+  historial en memoria durante la sesión. Ver `docs/adr/001-loop-propio-sin-framework.md`.
+- **v0.2 (siguiente):** Google Calendar real (lectura).
 - v0.3: tarea programada que envía el resumen del día.
 - v0.4: canal de WhatsApp.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
@@ -28,10 +29,12 @@ jarvis/
 ├── src/jarvis/
 │   ├── agent.py        # loop del agente
 │   ├── config.py       # carga de .env y settings
+│   ├── prompts.py      # system prompt
 │   ├── tools/          # una tool por archivo + registro central
-│   │   ├── __init__.py # registro: nombre -> (schema, función)
+│   │   ├── __init__.py # tools integradas y build_registry()
+│   │   ├── registry.py # registro: nombre -> (schema, función), confirmación y errores
 │   │   └── ...
-│   ├── memory.py       # historial y persistencia (SQLite)
+│   ├── memory.py       # historial y persistencia (SQLite) — pendiente; en v0.1 el historial vive en Agent
 │   └── cli.py          # punto de entrada por consola
 ├── tests/
 ├── docs/
