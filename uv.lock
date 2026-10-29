@@ -524,6 +524,7 @@ dependencies = [
     { name = "google-api-python-client" },
     { name = "google-auth-oauthlib" },
     { name = "python-dotenv" },
+    { name = "truststore" },
     { name = "tzdata" },
 ]
 
@@ -538,6 +539,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.201.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.5.0" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
+    { name = "truststore", specifier = ">=0.10" },
     { name = "tzdata", specifier = ">=2026.6" },
 ]
 

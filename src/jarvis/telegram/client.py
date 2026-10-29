@@ -1,10 +1,15 @@
 """Cliente mínimo de la API de bots de Telegram (https://core.telegram.org/bots/api)."""
 
 import json
+import socket
+import ssl
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from functools import cache
 from typing import Any
+
+import truststore
 
 from jarvis.chat import ChannelError
 
@@ -26,6 +31,10 @@ class TelegramConnectionError(TelegramError):
 
 class TelegramAuthError(TelegramError):
     """Token inválido o revocado: reintentar no sirve."""
+
+
+class TelegramCertificateError(TelegramError):
+    """El certificado HTTPS no es de confianza: reintentar no sirve."""
 
 
 class TelegramConflictError(TelegramError):
@@ -92,7 +101,7 @@ def http_call(url: str, params: dict[str, Any], timeout: float) -> dict[str, Any
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=_ssl_context()) as response:
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:
         # Telegram responde errores con JSON {"ok": false, "error_code": ..., "description": ...}.
@@ -100,8 +109,36 @@ def http_call(url: str, params: dict[str, Any], timeout: float) -> dict[str, Any
             return json.loads(exc.read())
         except ValueError:
             raise _api_error(exc.code, "") from None
-    except (urllib.error.URLError, TimeoutError, OSError):
-        raise TelegramConnectionError("No pude conectar con Telegram.") from None
+    except urllib.error.URLError as exc:
+        raise _network_error(exc.reason) from None
+    except OSError as exc:  # incluye TimeoutError
+        raise _network_error(exc) from None
+
+
+@cache
+def _ssl_context() -> ssl.SSLContext:
+    """Verifica HTTPS con el almacén de certificados del sistema operativo (como el navegador).
+
+    Así funciona también cuando un antivirus o un proxy de confianza inspecciona el tráfico
+    con su propio certificado raíz instalado en el sistema. La verificación nunca se desactiva.
+    """
+    return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+
+def _network_error(reason: object) -> TelegramError:
+    """Explica la causa de un fallo de red, sin incluir la URL (contiene el token)."""
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return TelegramCertificateError(
+            "No pude conectar con Telegram: su certificado HTTPS no es de confianza en este equipo. "
+            "Suele deberse a un antivirus o proxy que inspecciona las conexiones (ver README)."
+        )
+    if isinstance(reason, socket.gaierror):
+        return TelegramConnectionError(
+            "No pude conectar con Telegram: no se encontró api.telegram.org (revisa tu conexión)."
+        )
+    if isinstance(reason, TimeoutError):
+        return TelegramConnectionError("No pude conectar con Telegram: se agotó el tiempo de espera.")
+    return TelegramConnectionError(f"No pude conectar con Telegram ({type(reason).__name__}).")
 
 
 def _api_error(code: int | None, description: str) -> TelegramError:

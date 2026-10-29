@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.1 (cubre hasta la v0.5)
+- **Versión del documento:** 1.2 (cubre hasta la v0.5.1)
 - **Fecha:** 2026-10-29
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -118,6 +118,8 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RNF-04.** JARVIS no abre puertos en el PC: recibe los mensajes de Telegram consultando su API
   (long polling). El token del bot nunca aparece en logs ni en mensajes de error.
 - **RNF-05.** Las acciones programadas no son tools: el modelo no puede dispararlas ni cambiar su destino.
+- **RNF-05b.** Las conexiones HTTPS siempre verifican el certificado, usando el almacén de
+  certificados del sistema operativo (v0.5.1); nunca se desactiva la verificación.
 
 ### 4.2 Privacidad
 
