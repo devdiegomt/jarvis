@@ -13,8 +13,11 @@ DEFAULT_MODEL = "claude-sonnet-5-5"
 CALENDAR_SOURCES = ("sample", "google")
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "jarvis"
 DEFAULT_SUMMARY_TIME = time(7, 0)
-# Registro de ejecuciones del resumen: solo resultados, nunca el contenido.
+# Registros de ejecución: solo resultados, nunca el contenido de los mensajes.
 SUMMARY_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "resumen.log"
+WHATSAPP_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "whatsapp.log"
+DEFAULT_WHATSAPP_PORT = 8000
+DEFAULT_WHATSAPP_API_VERSION = "v25.0"
 
 
 class ConfigError(Exception):
@@ -39,6 +42,17 @@ class SummarySettings:
     @property
     def enabled(self) -> bool:
         return bool(self.recipient)
+
+
+@dataclass(frozen=True)
+class WhatsAppSettings:
+    access_token: str
+    phone_number_id: str
+    app_secret: str
+    verify_token: str
+    owner_number: str  # solo dígitos, con código de país (ej. 573001234567)
+    port: int
+    api_version: str
 
 
 @dataclass(frozen=True)
@@ -108,6 +122,47 @@ def load_summary_settings(env: Mapping[str, str]) -> SummarySettings:
         send_time=_load_time(env, "JARVIS_RESUMEN_HORA", DEFAULT_SUMMARY_TIME),
         db_path=_path(env, "JARVIS_DB_PATH", DEFAULT_CONFIG_DIR / "jarvis.db"),
     )
+
+
+def load_whatsapp_settings(env: Mapping[str, str]) -> WhatsAppSettings:
+    """Configuración del canal de WhatsApp. Todas las credenciales son obligatorias."""
+    required = {
+        name: _get(env, name)
+        for name in (
+            "WHATSAPP_ACCESS_TOKEN",
+            "WHATSAPP_PHONE_NUMBER_ID",
+            "WHATSAPP_APP_SECRET",
+            "WHATSAPP_VERIFY_TOKEN",
+            "WHATSAPP_OWNER_NUMBER",
+        )
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise ConfigError(f"Faltan variables de WhatsApp en tu .env: {', '.join(missing)}.")
+
+    owner = normalize_phone(required["WHATSAPP_OWNER_NUMBER"])
+    if not 8 <= len(owner) <= 15:
+        raise ConfigError(
+            "WHATSAPP_OWNER_NUMBER debe ser tu número con código de país, por ejemplo 573001234567."
+        )
+    port_text = _get(env, "WHATSAPP_PORT") or str(DEFAULT_WHATSAPP_PORT)
+    if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+        raise ConfigError(f"WHATSAPP_PORT='{port_text}' no es un puerto válido.")
+
+    return WhatsAppSettings(
+        access_token=required["WHATSAPP_ACCESS_TOKEN"],
+        phone_number_id=required["WHATSAPP_PHONE_NUMBER_ID"],
+        app_secret=required["WHATSAPP_APP_SECRET"],
+        verify_token=required["WHATSAPP_VERIFY_TOKEN"],
+        owner_number=owner,
+        port=int(port_text),
+        api_version=_get(env, "WHATSAPP_API_VERSION") or DEFAULT_WHATSAPP_API_VERSION,
+    )
+
+
+def normalize_phone(number: str) -> str:
+    """Deja solo los dígitos: `+57 300-123 4567` → `573001234567`."""
+    return "".join(char for char in number if char.isdigit())
 
 
 def _load_time(env: Mapping[str, str], name: str, default: time) -> time:

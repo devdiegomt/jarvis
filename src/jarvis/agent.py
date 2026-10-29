@@ -29,13 +29,15 @@ class Agent:
         model: str,
         system_prompt: str,
         max_iterations: int = MAX_ITERATIONS,
+        history: list[MessageParam] | None = None,
     ) -> None:
         self._client = client
         self._registry = registry
         self._model = model
         self._system_prompt = system_prompt
         self._max_iterations = max_iterations
-        self.history: list[MessageParam] = []
+        # El historial es JSON plano (dicts), así se puede guardar y recuperar tal cual.
+        self.history: list[MessageParam] = history if history is not None else []
 
     def send(self, user_message: str) -> str:
         """Procesa un mensaje del usuario y devuelve la respuesta final de JARVIS."""
@@ -50,7 +52,9 @@ class Agent:
                 messages=self.history,
             )
             # Se guarda el contenido completo (incluidos bloques de thinking y tool_use).
-            self.history.append({"role": "assistant", "content": response.content})
+            self.history.append(
+                {"role": "assistant", "content": [_block_to_param(b) for b in response.content]}
+            )
 
             if response.stop_reason == "tool_use":
                 self._append_user_content(self._run_tools(response.content))
@@ -96,6 +100,11 @@ class Agent:
             previous.extend(blocks)
         else:
             self.history.append({"role": "user", "content": blocks})
+
+
+def _block_to_param(block: ContentBlock) -> dict[str, Any]:
+    """Convierte un bloque de la respuesta en un dict reenviable a la API sin cambios."""
+    return block.model_dump(mode="json", exclude_none=True)
 
 
 def _extract_text(content: Iterable[ContentBlock]) -> str:

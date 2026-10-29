@@ -108,3 +108,40 @@ def test_refusal_returns_friendly_message() -> None:
     agent, _ = make_agent([text_response("", stop_reason="refusal")])
 
     assert agent.send("algo prohibido") == REFUSAL_MESSAGE
+
+
+def test_history_is_plain_json_and_keeps_thinking_blocks() -> None:
+    import json
+
+    from anthropic.types import Message, TextBlock, ThinkingBlock, Usage
+
+    response = Message(
+        id="msg",
+        type="message",
+        role="assistant",
+        model="m",
+        content=[ThinkingBlock(type="thinking", thinking="", signature="firma=="), TextBlock(type="text", text="Hola")],
+        stop_reason="end_turn",
+        stop_sequence=None,
+        usage=Usage(input_tokens=1, output_tokens=1),
+    )
+    agent, _ = make_agent([response])
+
+    agent.send("hola")
+
+    assert json.loads(json.dumps(agent.history))[1]["content"] == [
+        {"type": "thinking", "thinking": "", "signature": "firma=="},
+        {"type": "text", "text": "Hola"},
+    ]
+
+
+def test_agent_continues_an_existing_history() -> None:
+    previous = [
+        {"role": "user", "content": [{"type": "text", "text": "Me llamo Diego"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "Hola, Diego."}]},
+    ]
+    agent, client = make_agent([text_response("Diego.")], history=previous)
+
+    agent.send("¿Cómo me llamo?")
+
+    assert [m["role"] for m in client.messages.calls[0]["messages"]] == ["user", "assistant", "user"]

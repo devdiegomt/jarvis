@@ -1,4 +1,4 @@
-"""System prompt de JARVIS."""
+"""System prompts de JARVIS."""
 
 from datetime import date
 
@@ -14,6 +14,19 @@ del usuario, que el sistema solicita automáticamente. Si el usuario cancela, no
 
 Hoy es {today}."""
 
+_WHATSAPP_NOTE = """
+
+Estás hablando con el usuario por WhatsApp:
+- Escribe mensajes cortos, fáciles de leer en el celular.
+- No uses markdown: WhatsApp solo admite *negrita* (un asterisco) y _cursiva_.
+- Cada mensaje del usuario empieza con la fecha y hora en que lo envió, entre corchetes; \
+úsala para entender "hoy", "mañana" o "esta tarde"."""
+
 
 def build_system_prompt(today: date) -> str:
     return _SYSTEM_PROMPT.format(today=today.isoformat())
+
+
+def build_whatsapp_system_prompt(today: date) -> str:
+    """Se fija al empezar cada conversación; la fecha actual llega en cada mensaje."""
+    return build_system_prompt(today) + _WHATSAPP_NOTE

@@ -4,6 +4,7 @@
 - `uv run jarvis google-login`: autoriza el acceso a Google.
 - `uv run jarvis resumen [--dry-run] [--force]`: envía el resumen del día.
 - `uv run jarvis programar-resumen` / `quitar-resumen`: programa o quita el resumen diario.
+- `uv run jarvis whatsapp`: servidor para chatear con JARVIS por WhatsApp.
 """
 
 import argparse
@@ -23,6 +24,7 @@ from jarvis.config import (
     load_summary_settings,
     read_env,
 )
+from jarvis.confirmation import CONFIRMATION_QUESTION, parse_yes_no
 from jarvis.prompts import build_system_prompt
 from jarvis.tools import build_registry
 
@@ -34,14 +36,12 @@ def ask_confirmation(prompt: str, read: Callable[[str], str] = input) -> bool:
     print(f"\n{prompt}")
     while True:
         try:
-            answer = read("¿Confirmas? (s/n): ").strip().lower()
+            answer = parse_yes_no(read(f"{CONFIRMATION_QUESTION}: "))
         except (EOFError, KeyboardInterrupt):
             print()
             return False
-        if answer in ("s", "si", "sí"):
-            return True
-        if answer in ("n", "no"):
-            return False
+        if answer is not None:
+            return answer
         print("Responde 's' o 'n'.")
 
 
@@ -140,6 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser("programar-resumen", help="Programa el resumen de lunes a viernes.")
     commands.add_parser("quitar-resumen", help="Quita la programación del resumen.")
+    commands.add_parser("whatsapp", help="Arranca el servidor para chatear por WhatsApp.")
     return parser
 
 
@@ -154,6 +155,10 @@ def main(argv: list[str] | None = None) -> None:
         summary_cli.run_schedule_install()
     elif args.command == "quitar-resumen":
         summary_cli.run_schedule_remove()
+    elif args.command == "whatsapp":
+        from jarvis.whatsapp.app import run_whatsapp
+
+        run_whatsapp()
     else:
         run_chat()
 
