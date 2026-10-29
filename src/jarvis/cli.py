@@ -1,13 +1,19 @@
-"""Punto de entrada por consola: `uv run jarvis`."""
+"""Punto de entrada por consola.
 
+- `uv run jarvis`: chat con JARVIS.
+- `uv run jarvis google-login`: autoriza la lectura de Google Calendar.
+"""
+
+import argparse
 import sys
 from collections.abc import Callable
-from datetime import date
+from datetime import datetime
 
 import anthropic
 
 from jarvis.agent import Agent
-from jarvis.config import ConfigError, load_settings
+from jarvis.agenda import CalendarError, CalendarSource, build_calendar
+from jarvis.config import ConfigError, load_google_settings, load_settings, read_env
 from jarvis.prompts import build_system_prompt
 from jarvis.tools import build_registry
 
@@ -30,25 +36,27 @@ def ask_confirmation(prompt: str, read: Callable[[str], str] = input) -> bool:
         print("Responde 's' o 'n'.")
 
 
-def build_agent() -> Agent:
+def build_agent() -> tuple[Agent, CalendarSource]:
     settings = load_settings()
+    calendar = build_calendar(settings)
     client = anthropic.Anthropic(api_key=settings.api_key)
-    return Agent(
+    agent = Agent(
         client=client,
-        registry=build_registry(confirm=ask_confirmation),
+        registry=build_registry(calendar=calendar, confirm=ask_confirmation),
         model=settings.model,
-        system_prompt=build_system_prompt(date.today()),
+        system_prompt=build_system_prompt(datetime.now(settings.timezone).date()),
     )
+    return agent, calendar
 
 
-def main() -> None:
+def run_chat() -> None:
     try:
-        agent = build_agent()
+        agent, calendar = build_agent()
     except ConfigError as exc:
         print(f"Error de configuración: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"JARVIS listo. Escribe '{EXIT_COMMAND}' para terminar.\n")
+    print(f"JARVIS listo (calendario: {calendar.name}). Escribe '{EXIT_COMMAND}' para terminar.\n")
     while True:
         try:
             user_message = input("Tú: ").strip()
@@ -77,6 +85,35 @@ def main() -> None:
         print(f"JARVIS: {reply}\n")
 
     print("Hasta luego.")
+
+
+def run_google_login() -> None:
+    from jarvis.agenda.google_auth import login
+
+    google = load_google_settings(read_env())
+    print("Vas a autorizar a JARVIS a leer tu Google Calendar (solo lectura).")
+    try:
+        login(google.credentials_file, google.token_file)
+    except CalendarError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nAutorización cancelada.", file=sys.stderr)
+        sys.exit(1)
+    print(f"Autorización guardada en {google.token_file}.")
+    print("Pon JARVIS_CALENDAR=google en tu .env y ejecuta `uv run jarvis`.")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS, tu asistente personal.")
+    commands = parser.add_subparsers(dest="command")
+    commands.add_parser("google-login", help="Autoriza la lectura de Google Calendar.")
+    args = parser.parse_args(argv)
+
+    if args.command == "google-login":
+        run_google_login()
+    else:
+        run_chat()
 
 
 if __name__ == "__main__":
