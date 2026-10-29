@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.0 (cubre hasta la v0.4)
+- **Versión del documento:** 1.1 (cubre hasta la v0.5)
 - **Fecha:** 2026-10-29
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -15,7 +15,7 @@ Las decisiones de diseño (el *cómo*) están en los ADR de [`docs/adr/`](adr/).
 ### 1.2 Alcance
 
 JARVIS es un asistente personal con IA que ayuda a una persona a organizar su día: consulta sus
-reuniones, le envía un resumen diario y conversa con ella por consola y por WhatsApp. Se construye
+reuniones, le envía un resumen diario y conversa con ella por consola y por Telegram. Se construye
 en versiones pequeñas (ver el roadmap en [`CLAUDE.md`](../CLAUDE.md)).
 
 ### 1.3 Definiciones
@@ -27,8 +27,8 @@ en versiones pequeñas (ver el roadmap en [`CLAUDE.md`](../CLAUDE.md)).
 | Tool | Función que el modelo puede pedir ejecutar (por ejemplo, `get_reuniones`). |
 | Efecto externo | Acción que cambia algo fuera de JARVIS: enviar un mensaje, crear o borrar un evento. |
 | Fuente de calendario | Origen de las reuniones: datos de ejemplo o Google Calendar. |
-| Canal | Vía por la que el usuario habla con JARVIS o recibe avisos: consola, Gmail, WhatsApp. |
-| Conversación | Secuencia de mensajes con historial compartido; en WhatsApp termina por inactividad o con `/nuevo`. |
+| Canal | Vía por la que el usuario habla con JARVIS o recibe avisos: consola, Telegram, Gmail. |
+| Conversación | Secuencia de mensajes con historial compartido; en Telegram termina por inactividad o con `/nuevo`. |
 
 ## 2. Descripción general
 
@@ -36,25 +36,25 @@ en versiones pequeñas (ver el roadmap en [`CLAUDE.md`](../CLAUDE.md)).
 
 JARVIS es una aplicación Python que corre en el PC del usuario (Windows como plataforma principal).
 Usa servicios externos: la API de Anthropic (modelo de lenguaje), Google Calendar y Gmail
-(OAuth del propio usuario) y la WhatsApp Cloud API de Meta (con un número propio de JARVIS).
+(OAuth del propio usuario) y la API de bots de Telegram (con un bot propio del usuario).
 
 ### 2.2 Usuarios
 
 Un único usuario técnico-intermedio: sabe usar una terminal y seguir pasos de configuración en
-Google Cloud y Meta for Developers, guiado por el README.
+Google Cloud y en Telegram (@BotFather), guiado por el README.
 
 ### 2.3 Restricciones
 
 - **R-1.** Python 3.12, dependencias gestionadas con `uv`.
 - **R-2.** SDK oficial de Anthropic con loop propio, sin frameworks de agentes (ADR 001).
 - **R-3.** Modelo configurable por `JARVIS_MODEL`.
-- **R-4.** Solo vías oficiales de cada servicio (sin automatizar WhatsApp Web ni similares).
+- **R-4.** Solo vías oficiales de cada servicio (sin automatizar clientes web de mensajería ni similares).
 - **R-5.** Sin servidores propios en la nube por ahora: todo corre en el PC del usuario.
 
 ### 2.4 Supuestos
 
-- El PC está encendido y con sesión iniciada cuando se espera el resumen o una respuesta por WhatsApp.
-- El usuario tiene una cuenta de Google y una de Meta for Developers.
+- El PC está encendido y con sesión iniciada cuando se espera el resumen o una respuesta por Telegram.
+- El usuario tiene una cuenta de Google y una de Telegram.
 
 ## 3. Requisitos funcionales
 
@@ -77,26 +77,32 @@ Google Cloud y Meta for Developers, guiado por el README.
 - **RF-11.** Las horas se muestran en la zona horaria del usuario (`JARVIS_TIMEZONE`); se
   distinguen eventos de día completo y se omiten los cancelados o rechazados.
 
-### v0.3: resumen diario por Gmail
+### v0.3: resumen diario
 
-- **RF-12.** `uv run jarvis resumen` envía por Gmail un correo de texto con la agenda del día y un
-  comentario breve generado por Claude.
+- **RF-12.** `uv run jarvis resumen` envía un texto con la agenda del día y un comentario breve
+  generado por Claude, por el canal elegido en `JARVIS_RESUMEN_CANAL` (Telegram o Gmail; v0.5).
 - **RF-13.** Si Claude falla, el correo se envía igual, con la agenda y sin comentario.
 - **RF-14.** No se envía más de un resumen por día, salvo con `--force`; `--dry-run` lo muestra
   sin enviarlo.
 - **RF-15.** `programar-resumen` lo programa de lunes a viernes a `JARVIS_RESUMEN_HORA`;
   `quitar-resumen` lo elimina.
-- **RF-16.** El destinatario es fijo por configuración; el modelo no puede cambiarlo.
+- **RF-16.** El destinatario es fijo por configuración (correo o cuenta de Telegram del usuario);
+  el modelo no puede cambiarlo.
 
-### v0.4: chat por WhatsApp
+### v0.4 → v0.5: chat por Telegram
 
-- **RF-17.** `uv run jarvis whatsapp` arranca un servidor que recibe los mensajes de WhatsApp y
-  responde con el mismo agente y las mismas tools que la consola.
-- **RF-18.** Solo se atienden mensajes del número del usuario (`WHATSAPP_OWNER_NUMBER`).
-- **RF-19.** Las confirmaciones se piden en el chat; el siguiente mensaje del usuario es la
-  respuesta; sin respuesta en 5 minutos, la acción se cancela.
-- **RF-20.** El historial de WhatsApp persiste entre reinicios; una conversación nueva empieza
-  tras 6 horas de inactividad o con `/nuevo`. `/ayuda` lista los comandos.
+La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegram y retira WhatsApp
+(ADR 005).
+
+- **RF-17.** `uv run jarvis telegram` conecta JARVIS a un bot de Telegram del usuario y responde
+  con el mismo agente y las mismas tools que la consola.
+- **RF-18.** Solo se atienden mensajes de la cuenta del usuario (`TELEGRAM_OWNER_ID`) en chat
+  privado; sin ese ID configurado, el chat no arranca. `jarvis telegram-vincular` lo obtiene.
+- **RF-19.** Las confirmaciones se piden en el chat con botones Sí/No (también vale escribir "s/n");
+  sin respuesta en 5 minutos, la acción se cancela. Los botones de preguntas antiguas avisan que
+  expiraron.
+- **RF-20.** El historial del chat persiste entre reinicios; una conversación nueva empieza
+  tras 6 horas de inactividad o con `/nuevo`. `/start` da la bienvenida y `/ayuda` lista los comandos.
 - **RF-21.** Los mensajes que no son texto reciben una respuesta indicando que solo se entiende texto.
 - **RF-22.** Las respuestas de más de 4096 caracteres se dividen en varios mensajes.
 
@@ -109,15 +115,15 @@ Google Cloud y Meta for Developers, guiado por el README.
 - **RNF-02.** Permiso mínimo en cada servicio: `calendar.readonly`; `gmail.send` solo si el resumen
   está configurado.
 - **RNF-03.** Los tokens OAuth se guardan con permisos de archivo solo para el usuario.
-- **RNF-04.** El webhook de WhatsApp verifica la firma de Meta (`X-Hub-Signature-256`) y rechaza
-  avisos sin firma válida; el servidor escucha solo en `127.0.0.1`.
+- **RNF-04.** JARVIS no abre puertos en el PC: recibe los mensajes de Telegram consultando su API
+  (long polling). El token del bot nunca aparece en logs ni en mensajes de error.
 - **RNF-05.** Las acciones programadas no son tools: el modelo no puede dispararlas ni cambiar su destino.
 
 ### 4.2 Privacidad
 
 - **RNF-06.** Los logs no contienen el contenido de mensajes, correos ni reuniones: solo resultados,
   IDs y tipos de error.
-- **RNF-07.** El historial de WhatsApp se guarda solo en el equipo del usuario y se borra a los 30 días.
+- **RNF-07.** El historial del chat se guarda solo en el equipo del usuario y se borra a los 30 días.
 - **RNF-08.** No se guarda el contenido de los resúmenes enviados, solo la fecha y hora del envío.
 
 ### 4.3 Fiabilidad
@@ -126,7 +132,8 @@ Google Cloud y Meta for Developers, guiado por el README.
   mensaje claro en español.
 - **RNF-10.** El resumen programado reintenta hasta 3 veces ante fallos temporales; los errores de
   autorización no se reintentan.
-- **RNF-11.** Los avisos duplicados de Meta no producen respuestas duplicadas.
+- **RNF-11.** Las actualizaciones que Telegram reenvía tras un reinicio no producen respuestas
+  duplicadas; los fallos de red se reintentan con espera creciente.
 
 ### 4.4 Calidad y mantenibilidad
 
@@ -143,12 +150,11 @@ Google Cloud y Meta for Developers, guiado por el README.
 
 ## 5. Fuera de alcance (por ahora)
 
-- Leer los chats personales de WhatsApp del usuario o escribir desde su número (no lo permiten las
-  vías oficiales).
+- Leer los chats personales del usuario (WhatsApp, Telegram) o escribir desde su cuenta.
 - Enviar mensajes reales a terceros: `enviar_mensaje` sigue simulada.
 - Crear, modificar o borrar eventos del calendario.
-- Mensajes de voz, imágenes o archivos por WhatsApp.
-- Resumen diario por WhatsApp (requiere plantillas aprobadas por Meta).
+- Mensajes de voz, imágenes o archivos en el chat.
+- WhatsApp como canal (retirado en la v0.5; ver ADR 004 y ADR 005).
 - Varios usuarios, servidor en la nube, Alexa y llamadas telefónicas (ver roadmap).
 
 ## 6. Trazabilidad
@@ -158,5 +164,5 @@ Google Cloud y Meta for Developers, guiado por el README.
 | RF-01 a RF-07 | `agent.py`, `tools/`, `cli.py` | `test_agent.py`, `test_tools.py`, `test_cli.py` |
 | RF-08 a RF-11 | `agenda/`, `google_auth.py`, `tools/reuniones.py` | `test_google_calendar.py`, `test_google_auth.py`, `test_tools.py` |
 | RF-12 a RF-16 | `summary.py`, `summary_cli.py`, `notify/`, `scheduler.py`, `storage.py` | `test_summary.py`, `test_gmail.py`, `test_scheduler.py`, `test_storage.py` |
-| RF-17 a RF-22 | `whatsapp/`, `memory.py`, `confirmation.py` | `test_whatsapp_*.py`, `test_memory.py`, `test_confirmation.py` |
-| RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `whatsapp/webhook.py`, logs | `test_config.py`, `test_google_auth.py`, `test_whatsapp_webhook.py` |
+| RF-17 a RF-22 | `chat.py`, `telegram/`, `memory.py`, `confirmation.py` | `test_chat.py`, `test_telegram.py`, `test_memory.py`, `test_confirmation.py` |
+| RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |
