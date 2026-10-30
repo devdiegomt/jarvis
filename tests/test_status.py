@@ -92,3 +92,9 @@ def test_status_does_not_create_the_database(isolated_config_dir: Path) -> None:
 
     assert "Recordatorios pendientes: ninguno" in text
     assert not (isolated_config_dir / "jarvis.db").exists()
+
+
+def test_voice_status_is_shown(isolated_config_dir: Path) -> None:
+    text = report({**FULL_ENV, "JARVIS_TRANSCRIPCION": "no"}, None)
+
+    assert "Notas de voz: desactivadas" in text

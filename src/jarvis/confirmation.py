@@ -7,7 +7,8 @@ _NO = {"n", "no"}
 
 def parse_yes_no(answer: str) -> bool | None:
     """True para sí, False para no, None si la respuesta no es válida."""
-    normalized = answer.strip().lower().rstrip(".!")
+    # La puntuación sobra: "¡Sí!" o "No." (como suele transcribirse una nota de voz).
+    normalized = answer.strip().lower().strip(" .,;!?¡¿")
     if normalized in _YES:
         return True
     if normalized in _NO:

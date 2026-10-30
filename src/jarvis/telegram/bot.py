@@ -5,7 +5,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from jarvis.chat import ButtonAnswer, ChatEvent, IncomingMessage, split_text
+from jarvis.chat import ButtonAnswer, ChatEvent, IncomingMessage, VoiceNote, split_text
 from jarvis.telegram.client import TelegramClient, TelegramConflictError, TelegramConnectionError
 
 CHANNEL_NAME = "telegram"
@@ -41,6 +41,9 @@ class TelegramChannel:
     def acknowledge(self, answer: ButtonAnswer, text: str = "") -> None:
         self._client.answer_callback(answer.id, text)
 
+    def download_voice(self, note: VoiceNote) -> bytes:
+        return self._client.download_file(note.ref)
+
 
 def parse_update(update: dict[str, Any], owner_id: str) -> ChatEvent | None:
     """Convierte una actualización de Telegram en un evento del chat.
@@ -53,8 +56,12 @@ def parse_update(update: dict[str, Any], owner_id: str) -> ChatEvent | None:
         if chat.get("type") != "private" or str(sender.get("id")) != owner_id:
             _log_ignored(sender)
             return None
+        voice = message.get("voice")
         return IncomingMessage(
-            id=f"{chat['id']}:{message['message_id']}", sender=str(chat["id"]), text=message.get("text")
+            id=f"{chat['id']}:{message['message_id']}",
+            sender=str(chat["id"]),
+            text=message.get("text"),
+            voice=VoiceNote(voice["file_id"], int(voice.get("duration", 0))) if voice else None,
         )
 
     if "callback_query" in update:

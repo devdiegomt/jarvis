@@ -19,14 +19,21 @@ from jarvis.chat import (
     REJECTED_MARK,
     TIMEOUT_MARK,
     WELCOME_TEXT,
+    HEARD_TEMPLATE,
+    VOICE_DISABLED_TEXT,
+    VOICE_DOWNLOAD_ERROR_TEXT,
+    VOICE_EMPTY_TEXT,
+    VOICE_TOO_LONG_TEXT,
     ButtonAnswer,
     ChannelError,
     ChatService,
     IncomingMessage,
+    VoiceNote,
     split_text,
 )
 from jarvis.memory import ConversationStore
 from jarvis.tools import Confirmer, Tool, ToolRegistry
+from jarvis.voice import TranscriptionError
 
 OWNER = "123456789"
 NOW = datetime(2026, 10, 29, 15, 30, tzinfo=UTC)
@@ -43,6 +50,8 @@ class FakeChannel:
         self.closed: list[tuple[int, str]] = []
         self.acks: list[tuple[str, str]] = []
         self.fail_typing = fail_typing
+        self.downloads: list[VoiceNote] = []
+        self.fail_download = False
         self.on_ask: Callable[[], None] | None = None  # simula lo que hace el usuario al ver la pregunta
 
     def send_text(self, to: str, text: str) -> None:
@@ -64,6 +73,12 @@ class FakeChannel:
 
     def acknowledge(self, answer: ButtonAnswer, text: str = "") -> None:
         self.acks.append((answer.id, text))
+
+    def download_voice(self, note: VoiceNote) -> bytes:
+        if self.fail_download:
+            raise ChannelError("sin red")
+        self.downloads.append(note)
+        return f"audio:{note.ref}".encode()
 
     def button(self, value: str, question: int = -1) -> str:
         """Dato del botón Sí ("si") o No ("no") de una pregunta enviada."""
@@ -109,6 +124,10 @@ class Setup:
     def message(self, text: str | None) -> None:
         self._counter += 1
         self.chat.submit(IncomingMessage(id=f"m{self._counter}", sender=OWNER, text=text))
+
+    def voice(self, ref: str, duration: int = 4) -> None:
+        self._counter += 1
+        self.chat.submit(IncomingMessage(id=f"m{self._counter}", sender=OWNER, text=None, voice=VoiceNote(ref, duration)))
 
     def click(self, data: str) -> None:
         self._counter += 1
@@ -325,3 +344,83 @@ def test_reminder_button_during_a_confirmation_is_still_handled(tmp_path: Path) 
 
     assert handled == ["rem:1:posponer"]
     assert setup.actions == ["avisar a Ana"]
+
+
+# --- Notas de voz -----------------------------------------------------------
+
+
+class FakeTranscriber:
+    name = "prueba"
+
+    def __init__(self, texts: dict[str, str] | None = None, error: Exception | None = None) -> None:
+        self.texts = texts or {}
+        self.error = error
+        self.audios: list[bytes] = []
+
+    def transcribe(self, audio: bytes) -> str:
+        self.audios.append(audio)
+        if self.error:
+            raise self.error
+        return self.texts.get(audio.decode().removeprefix("audio:"), "")
+
+
+def test_voice_note_is_transcribed_echoed_and_answered(tmp_path: Path) -> None:
+    transcriber = FakeTranscriber({"v1": "¿Qué tengo hoy?"})
+    setup = Setup(tmp_path, [text_response("Tienes 2 reuniones.")], transcriber=transcriber)
+
+    setup.voice("v1")
+    setup.process()
+
+    assert transcriber.audios == [b"audio:v1"]
+    assert setup.channel.sent == [HEARD_TEMPLATE.format("¿Qué tengo hoy?"), "Tienes 2 reuniones."]
+    text = setup.anthropic.messages.calls[0]["messages"][0]["content"][0]["text"]
+    assert text == "[2026-10-29 15:30] (nota de voz) ¿Qué tengo hoy?"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "duration", "expected"),
+    [
+        ({}, 4, VOICE_DISABLED_TEXT),
+        ({"transcriber": FakeTranscriber()}, 4, VOICE_EMPTY_TEXT),
+        ({"transcriber": FakeTranscriber()}, 5 * 60 + 1, VOICE_TOO_LONG_TEXT),
+        ({"transcriber": FakeTranscriber(error=TranscriptionError("Falta el modelo."))}, 4, "Falta el modelo."),
+    ],
+)
+def test_voice_notes_that_cannot_be_answered(tmp_path: Path, kwargs: dict, duration: int, expected: str) -> None:
+    setup = Setup(tmp_path, [], **kwargs)
+
+    setup.voice("v1", duration=duration)
+    setup.process()
+
+    assert setup.channel.sent == [expected]
+    assert setup.anthropic.messages.calls == []
+
+
+def test_long_voice_note_is_not_downloaded(tmp_path: Path) -> None:
+    setup = Setup(tmp_path, [], transcriber=FakeTranscriber())
+
+    setup.voice("v1", duration=10 * 60)
+    setup.process()
+
+    assert setup.channel.downloads == []
+
+
+def test_voice_download_failure_is_reported(tmp_path: Path) -> None:
+    setup = Setup(tmp_path, [], transcriber=FakeTranscriber({"v1": "hola"}))
+    setup.channel.fail_download = True
+
+    setup.voice("v1")
+    setup.process()
+
+    assert setup.channel.sent == [VOICE_DOWNLOAD_ERROR_TEXT]
+
+
+def test_confirmation_answered_with_a_voice_note(tmp_path: Path) -> None:
+    setup = confirmation_flow(tmp_path, transcriber=FakeTranscriber({"v1": "¡Sí!"}))
+
+    setup.message("Avisa a Ana")
+    setup.voice("v1")
+    setup.process()
+
+    assert setup.actions == ["avisar a Ana"]
+    assert HEARD_TEMPLATE.format("¡Sí!") in setup.channel.sent

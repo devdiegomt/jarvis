@@ -1,7 +1,7 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.4 (cubre hasta la v0.7)
-- **Fecha:** 2026-10-29
+- **Versión del documento:** 1.5 (cubre hasta la v0.8)
+- **Fecha:** 2026-10-30
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
 ## 1. Introducción
@@ -15,7 +15,8 @@ Las decisiones de diseño (el *cómo*) están en los ADR de [`docs/adr/`](adr/).
 ### 1.2 Alcance
 
 JARVIS es un asistente personal con IA que ayuda a una persona a organizar su día: consulta sus
-reuniones, le envía un resumen diario y conversa con ella por consola y por Telegram. Se construye
+reuniones, le envía un resumen diario y conversa con ella por consola y por Telegram, por escrito o
+con notas de voz. Se construye
 en versiones pequeñas (ver el roadmap en [`CLAUDE.md`](../CLAUDE.md)).
 
 ### 1.3 Definiciones
@@ -29,6 +30,7 @@ en versiones pequeñas (ver el roadmap en [`CLAUDE.md`](../CLAUDE.md)).
 | Fuente de calendario | Origen de las reuniones: datos de ejemplo o Google Calendar. |
 | Canal | Vía por la que el usuario habla con JARVIS o recibe avisos: consola, Telegram, Gmail. |
 | Conversación | Secuencia de mensajes con historial compartido; en Telegram termina por inactividad o con `/nuevo`. |
+| Transcripción | Paso de una nota de voz a texto; hoy se hace en el PC con Whisper. |
 
 ## 2. Descripción general
 
@@ -127,6 +129,17 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-31.** `jarvis estado` muestra cuántos recordatorios hay pendientes y la hora del próximo
   (sin su texto).
 
+### v0.8: notas de voz
+
+- **RF-32.** El usuario envía notas de voz por Telegram; JARVIS las transcribe, le muestra lo que
+  entendió y responde como si se lo hubiera escrito.
+- **RF-33.** Las confirmaciones también se pueden responder con una nota de voz ("sí" / "no").
+- **RF-34.** Si la voz no está instalada, falta el modelo, la nota dura más de 5 minutos o no se
+  entiende nada, JARVIS lo dice con un mensaje claro en español (y cómo solucionarlo).
+- **RF-35.** `jarvis preparar-voz` descarga una sola vez el modelo de voz configurado
+  (`JARVIS_WHISPER_MODELO`); `JARVIS_TRANSCRIPCION=no` desactiva las notas de voz.
+- **RF-36.** `jarvis estado` y el arranque del bot indican si las notas de voz están activas.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -150,6 +163,8 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RNF-08.** No se guarda el contenido de los resúmenes enviados, solo la fecha y hora del envío.
 - **RNF-08b.** Los recordatorios se guardan solo en el equipo; los cerrados se borran a los 30 días
   y los registros solo contienen sus IDs.
+- **RNF-08c.** El audio de las notas de voz se procesa en memoria en el PC y nunca se guarda en disco
+  ni se envía a terceros; los registros solo contienen su duración y el tiempo de transcripción.
 
 ### 4.3 Fiabilidad
 
@@ -161,13 +176,16 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   duplicadas; los fallos de red se reintentan con espera creciente.
 - **RNF-11b.** Los registros rotan (1 MB por archivo, como máximo 4 archivos) para no crecer sin
   límite con JARVIS corriendo todo el día.
+- **RNF-11c.** Un fallo al descargar o transcribir una nota de voz no detiene el chat; el proceso en
+  segundo plano nunca descarga modelos.
 
 ### 4.4 Calidad y mantenibilidad
 
 - **RNF-12.** Código, funciones y variables en inglés; comentarios, docs y mensajes al usuario en español.
 - **RNF-13.** Type hints en todo; funciones pequeñas con una sola responsabilidad.
 - **RNF-14.** Cada funcionalidad viene con tests; las APIs externas y el sistema operativo se mockean.
-- **RNF-15.** Los tests corren en GitHub Actions en cada pull request y en cada push a `main`.
+- **RNF-15.** Los tests corren en GitHub Actions en cada pull request y en cada push a `main`, sin
+  instalar las dependencias opcionales de voz.
 - **RNF-16.** Cada decisión de arquitectura relevante se documenta en un ADR.
 
 ### 4.5 Plataforma
@@ -181,7 +199,7 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - Leer los chats personales del usuario (WhatsApp, Telegram) o escribir desde su cuenta.
 - Enviar mensajes reales a terceros: `enviar_mensaje` sigue simulada.
 - Crear, modificar o borrar eventos del calendario.
-- Mensajes de voz, imágenes o archivos en el chat.
+- Respuestas con voz (prevista en la v0.8.1), imágenes o archivos en el chat.
 - WhatsApp como canal (retirado en la v0.5; ver ADR 004 y ADR 005).
 - Varios usuarios, servidor en la nube, Alexa y llamadas telefónicas (ver roadmap).
 
@@ -195,4 +213,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-17 a RF-22 | `chat.py`, `telegram/`, `memory.py`, `confirmation.py` | `test_chat.py`, `test_telegram.py`, `test_memory.py`, `test_confirmation.py` |
 | RF-23 a RF-26 | `scheduler.py`, `telegram/app.py`, `status.py`, `logs.py`, `summary_cli.py` | `test_scheduler.py`, `test_status.py`, `test_logs.py`, `test_telegram.py`, `test_summary_cli.py` |
 | RF-27 a RF-31 | `reminders.py`, `reminder_delivery.py`, `tools/recordatorios.py`, `chat.py` | `test_reminders.py`, `test_chat.py`, `test_status.py` |
+| RF-32 a RF-36 | `voice.py`, `chat.py`, `telegram/`, `confirmation.py`, `cli.py`, `status.py` | `test_voice.py`, `test_chat.py`, `test_telegram.py`, `test_confirmation.py`, `test_status.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

@@ -8,6 +8,7 @@ una confirmación espere la respuesta leyendo la misma cola: el siguiente evento
 import logging
 import queue
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -20,23 +21,32 @@ from jarvis.agent import Agent
 from jarvis.confirmation import parse_yes_no
 from jarvis.memory import Conversation, ConversationStore
 from jarvis.tools import Confirmer
+from jarvis.voice import MAX_VOICE_SECONDS, TranscriptionError, Transcriber
 
 CONFIRMATION_TIMEOUT_SECONDS = 5 * 60
 PURGE_INTERVAL = timedelta(hours=24)
 
 WELCOME_TEXT = (
     "Hola, soy JARVIS. Pregúntame por tu agenda o pídeme ayuda con tu día.\n\n"
+    "Puedes escribirme o enviarme notas de voz.\n\n"
     "Comandos: /nuevo para empezar una conversación nueva, /ayuda para ver esta ayuda."
 )
 HELP_TEXT = (
-    "Pregúntame, por ejemplo: «¿Qué tengo hoy?» o «¿Tengo algo libre el jueves por la tarde?».\n\n"
+    "Pregúntame, por ejemplo: «¿Qué tengo hoy?» o «Recuérdame a las 5 llamar a Laura». "
+    "También entiendo notas de voz.\n\n"
     "/nuevo: empezar una conversación nueva\n/ayuda: ver esta ayuda"
 )
 NEW_CONVERSATION_TEXT = "Listo, empezamos una conversación nueva."
-ONLY_TEXT_TEXT = "Por ahora solo entiendo mensajes de texto."
+ONLY_TEXT_TEXT = "Por ahora entiendo mensajes de texto y notas de voz."
+VOICE_DISABLED_TEXT = "Las notas de voz están desactivadas (JARVIS_TRANSCRIPCION=no). Escríbeme el mensaje."
+VOICE_TOO_LONG_TEXT = f"La nota de voz es muy larga: envíame una de máximo {MAX_VOICE_SECONDS // 60} minutos."
+VOICE_DOWNLOAD_ERROR_TEXT = "No pude descargar la nota de voz. Inténtalo de nuevo."
+VOICE_EMPTY_TEXT = "No logré entender nada en la nota de voz. ¿Me lo repites o me lo escribes?"
+HEARD_TEMPLATE = "🎙 Entendí: «{}»"
+VOICE_MARK = "(nota de voz)"
 AI_ERROR_TEXT = "Tuve un problema al consultar la IA. Inténtalo de nuevo en un momento."
 UNEXPECTED_ERROR_TEXT = "Algo salió mal al procesar tu mensaje. Inténtalo de nuevo."
-ASK_AGAIN_TEXT = "Responde con los botones, o escribe «s» o «n»."
+ASK_AGAIN_TEXT = "Responde con los botones, o escribe (o di en una nota de voz) «sí» o «no»."
 EXPIRED_TEXT = "Esta pregunta ya expiró."
 APPROVED_MARK = "✅ Confirmado"
 REJECTED_MARK = "❌ Cancelado"
@@ -54,10 +64,17 @@ class ChannelError(Exception):
 
 
 @dataclass(frozen=True)
+class VoiceNote:
+    ref: str  # identificador del audio en el canal (en Telegram, su file_id)
+    duration: int  # segundos
+
+
+@dataclass(frozen=True)
 class IncomingMessage:
     id: str
     sender: str  # identificador del chat del usuario en el canal
-    text: str | None  # None si no es texto (audio, imagen…)
+    text: str | None  # None si no es texto (nota de voz, imagen…)
+    voice: VoiceNote | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +107,10 @@ class ChatChannel(Protocol):
 
     def acknowledge(self, answer: ButtonAnswer, text: str = "") -> None: ...
 
+    def download_voice(self, note: VoiceNote) -> bytes:
+        """Descarga el audio de una nota de voz (solo a memoria)."""
+        ...
+
 
 # Crea el agente de un mensaje a partir del historial, el system prompt y el confirmador.
 AgentFactory = Callable[[list, str, Confirmer], Agent]
@@ -110,9 +131,11 @@ class ChatService:
         now: Callable[[], datetime],
         confirmation_timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
         button_handler: ButtonHandler | None = None,
+        transcriber: Transcriber | None = None,
     ) -> None:
         self._channel = channel
         self._button_handler = button_handler
+        self._transcriber = transcriber
         self._store = store
         self._agent_factory = agent_factory
         self._system_prompt = system_prompt
@@ -154,11 +177,11 @@ class ChatService:
             self.process_next()
 
     def _handle_message(self, message: IncomingMessage) -> None:
-        if message.text is None:
-            self._channel.send_text(message.sender, ONLY_TEXT_TEXT)
+        text = self._read_text(message)
+        if text is None:
             return
 
-        command = message.text.strip().lower().split("@")[0]  # "/ayuda@MiBot" → "/ayuda"
+        command = text.strip().lower().split("@")[0]  # "/ayuda@MiBot" → "/ayuda"
         if command == "/start":
             self._channel.send_text(message.sender, WELCOME_TEXT)
             return
@@ -172,16 +195,55 @@ class ChatService:
 
         self._show_typing(message.sender)
         conversation = self._store.load_active(self._channel.name, message.sender, self._system_prompt)
-        reply = self._ask_agent(conversation, message)
+        # La fecha va en cada mensaje: el system prompt no cambia dentro de una conversación.
+        # La marca de nota de voz avisa al modelo de que el texto puede traer errores de transcripción.
+        mark = f"{VOICE_MARK} " if message.voice is not None else ""
+        reply = self._ask_agent(conversation, message.sender, f"[{self._now():%Y-%m-%d %H:%M}] {mark}{text}")
         self._channel.send_text(message.sender, reply)
         logger.info("Mensaje %s respondido.", message.id)
 
-    def _ask_agent(self, conversation: Conversation, message: IncomingMessage) -> str:
-        agent = self._agent_factory(
-            conversation.messages, conversation.system_prompt, self._confirmer_for(message.sender)
-        )
-        # La fecha va en cada mensaje: el system prompt no cambia dentro de una conversación.
-        text = f"[{self._now():%Y-%m-%d %H:%M}] {message.text}"
+    def _read_text(self, message: IncomingMessage) -> str | None:
+        """Texto del mensaje (transcrito si es una nota de voz). None si no hay, tras avisar al usuario."""
+        if message.voice is not None:
+            return self._transcribe(message.sender, message.voice)
+        if message.text is None:
+            self._channel.send_text(message.sender, ONLY_TEXT_TEXT)
+        return message.text
+
+    def _transcribe(self, sender: str, note: VoiceNote) -> str | None:
+        if self._transcriber is None:
+            self._channel.send_text(sender, VOICE_DISABLED_TEXT)
+            return None
+        if note.duration > MAX_VOICE_SECONDS:
+            self._channel.send_text(sender, VOICE_TOO_LONG_TEXT)
+            return None
+
+        self._show_typing(sender)
+        try:
+            audio = self._channel.download_voice(note)
+        except ChannelError as exc:
+            logger.error("No se pudo descargar una nota de voz: %s", exc)
+            self._channel.send_text(sender, VOICE_DOWNLOAD_ERROR_TEXT)
+            return None
+
+        started = time.monotonic()
+        try:
+            text = self._transcriber.transcribe(audio)
+        except TranscriptionError as exc:
+            logger.error("Nota de voz sin transcribir: %s", exc)
+            self._channel.send_text(sender, str(exc))
+            return None
+        # Solo duraciones: lo que se dijo nunca va al registro.
+        logger.info("Nota de voz de %d s transcrita en %.1f s.", note.duration, time.monotonic() - started)
+
+        if not text:
+            self._channel.send_text(sender, VOICE_EMPTY_TEXT)
+            return None
+        self._channel.send_text(sender, HEARD_TEMPLATE.format(text))
+        return text
+
+    def _ask_agent(self, conversation: Conversation, sender: str, text: str) -> str:
+        agent = self._agent_factory(conversation.messages, conversation.system_prompt, self._confirmer_for(sender))
         try:
             return agent.send(text)
         except anthropic.APIError as exc:
@@ -206,7 +268,7 @@ class ChatService:
         return confirm
 
     def _wait_for_answer(self, confirmation_id: str) -> bool | None:
-        """Espera un botón de esta pregunta o un «s/n» escrito. None si se agota el tiempo."""
+        """Espera un botón de esta pregunta o un «s/n» escrito o dicho. None si se agota el tiempo."""
         deadline = self._now() + timedelta(seconds=self._confirmation_timeout)
         while True:
             remaining = (deadline - self._now()).total_seconds()
@@ -225,7 +287,10 @@ class ChatService:
                 self._channel.acknowledge(event)
                 return value == "si"
 
-            answer = parse_yes_no(event.text or "")
+            text = self._read_text(event)  # una nota de voz con "sí" también vale
+            if text is None:
+                continue
+            answer = parse_yes_no(text)
             if answer is not None:
                 return answer
             self._channel.send_text(event.sender, ASK_AGAIN_TEXT)

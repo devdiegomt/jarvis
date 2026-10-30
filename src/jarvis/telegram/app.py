@@ -45,6 +45,7 @@ from jarvis.telegram.client import (
     TelegramError,
 )
 from jarvis.tools import Confirmer, build_registry
+from jarvis.voice import build_transcriber, describe_voice
 
 LINK_TIMEOUT_SECONDS = 5 * 60
 BACKGROUND_HINT = (
@@ -90,14 +91,18 @@ def run_telegram(scheduled: bool = False) -> None:
         system_prompt=lambda: build_chat_system_prompt(now().date()),
         now=now,
         button_handler=delivery.handle_button,
+        transcriber=build_transcriber(settings.voice),
     )
     poller = TelegramPoller(client, telegram.owner_id, deliver=chat.submit, mark_processed=store.mark_processed)
     chat.start()
     threading.Thread(target=delivery.run_forever, name="jarvis-recordatorios", daemon=True).start()
 
+    voice_status = describe_voice(settings.voice)
     print(f"JARVIS conectado a Telegram como @{bot_name} (calendario: {calendar.name}).")
+    print(f"Notas de voz: {voice_status}.")
     print("Escríbele a tu bot desde Telegram. Ctrl+C para detener.\n")
     logger.info("Bot de Telegram iniciado%s.", " en segundo plano" if scheduled else "")
+    logger.info("Notas de voz: %s.", voice_status, extra=FILE_ONLY)
     try:
         poller.run_forever(wait_on_conflict=scheduled)
     except KeyboardInterrupt:

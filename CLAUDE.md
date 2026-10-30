@@ -29,7 +29,10 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   esté en el PATH y muestra la última ejecución y el resultado de cada tarea.
 - **v0.7 (hecha):** recordatorios (crear, listar, cancelar) entregados por Telegram con botones
   [Posponer 10 min] [Hecho]. Ver `docs/adr/008-recordatorios.md`.
-- **v0.8 (siguiente):** notas de voz en Telegram (transcripción y respuesta con voz opcional).
+- **v0.8 (hecha):** notas de voz en Telegram, transcritas en el PC con Whisper (`faster-whisper`,
+  grupo opcional `voz`); modelo descargado con `preparar-voz`; interfaz `Transcriber` para cambiar
+  de motor. Ver `docs/adr/009-notas-de-voz-whisper-local.md`.
+- **v0.8.1 (siguiente):** respuesta con voz opcional (elegir voz local o un servicio como ElevenLabs).
 - Después, en este orden: pendientes y memoria a largo plazo; "Oye JARVIS" en el PC (palabra de
   activación); búsqueda en internet; escribir en el calendario; avisos proactivos; Gmail (avisos
   de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
@@ -45,6 +48,7 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 - Modelo configurable por variable de entorno `JARVIS_MODEL` (default: `claude-sonnet-5-5`)
 - API de bots de Telegram vía `urllib` (long polling, sin webhook), con `truststore` para verificar
   HTTPS con el almacén de certificados del sistema
+- `faster-whisper` (grupo opcional `voz`) para transcribir notas de voz en el PC
 - SQLite para persistencia local (más adelante Postgres)
 - `python-dotenv` para configuración, `pytest` para tests
 - Gestión de dependencias con `uv` y `pyproject.toml`
@@ -72,6 +76,7 @@ jarvis/
 │   ├── reminders.py    # SQLite: recordatorios (crear, cancelar, posponer, vencidos)
 │   ├── reminder_delivery.py # entrega de recordatorios por el chat y sus botones
 │   ├── confirmation.py # interpretación de respuestas s/n, común a todos los canales
+│   ├── voice.py        # notas de voz: Transcriber (interfaz), Whisper local y descarga del modelo
 │   ├── chat.py         # chat independiente del canal: agente, confirmaciones, comandos, memoria
 │   ├── telegram/       # canal de Telegram
 │   │   ├── client.py   # API de bots (urllib): enviar, botones, getUpdates, errores
@@ -99,7 +104,7 @@ jarvis/
   Agregar una tool nueva no debe requerir tocar `agent.py`.
 - El loop del agente tiene un límite máximo de iteraciones para evitar ciclos infinitos.
 - Errores de una tool se devuelven al modelo como resultado con `is_error`, no rompen el programa.
-- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram) y al
+- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram, Whisper) y al
   sistema (Programador de tareas) se mockean en los tests. Ningún test escribe en `~/.config/jarvis`
   (`tests/conftest.py` lo redirige a una carpeta temporal).
 - Al terminar una versión: actualizar este archivo (roadmap) y agregar un ADR si hubo una decisión relevante.
@@ -125,6 +130,7 @@ jarvis/
   `jarvis.logs` (rotativos).
 - Las tareas programadas corren solo con la sesión del usuario iniciada; nunca guardar su contraseña
   de Windows en el Programador de tareas.
+- El audio de las notas de voz se procesa en memoria y no se guarda en disco ni sale del PC.
 
 ## Comandos
 - Instalar: `uv sync`
@@ -134,5 +140,6 @@ jarvis/
 - Programar / quitar el resumen: `uv run jarvis programar-resumen` / `uv run jarvis quitar-resumen`
 - Telegram: `uv run jarvis telegram` (la primera vez, `uv run jarvis telegram-vincular`)
 - Telegram en segundo plano: `uv run jarvis programar-telegram` / `uv run jarvis quitar-telegram`
+- Notas de voz (una vez): `uv run jarvis preparar-voz`
 - Estado: `uv run jarvis estado`
-- Tests: `uv run pytest`
+- Tests: `uv run pytest` (en la CI, sin el grupo de voz)

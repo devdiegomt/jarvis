@@ -19,8 +19,9 @@ jobs:
         with:
           enable-cache: true
 
+      # Sin el grupo de voz (Whisper, pesado): los tests simulan la transcripción.
       - name: Instalar dependencias
-        run: uv sync --locked
+        run: uv sync --locked --no-group voz
 
       - name: Correr tests
-        run: uv run pytest
+        run: uv run --no-sync pytest

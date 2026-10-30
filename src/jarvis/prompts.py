@@ -20,7 +20,9 @@ Estás hablando con el usuario por un chat en el celular (Telegram):
 - Escribe mensajes cortos, fáciles de leer en el teléfono.
 - Escribe en texto plano: no uses markdown (ni asteriscos, ni almohadillas, ni tablas).
 - Cada mensaje del usuario empieza con la fecha y hora en que lo envió, entre corchetes; \
-úsala para entender "hoy", "mañana" o "esta tarde"."""
+úsala para entender "hoy", "mañana" o "esta tarde".
+- Si después de la fecha dice (nota de voz), es la transcripción automática de un audio: puede \
+traer palabras mal entendidas. Si algo no cuadra (un nombre, una hora), pregunta antes de actuar."""
 
 
 def build_system_prompt(today: date) -> str:
