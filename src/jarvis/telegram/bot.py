@@ -31,11 +31,11 @@ class TelegramChannel:
     def show_typing(self, to: str) -> None:
         self._client.send_typing(to)
 
-    def ask_confirmation(self, to: str, prompt: str, buttons: list[tuple[str, str]]) -> int:
-        message = self._client.send_message(to, prompt, buttons=buttons)
+    def send_with_buttons(self, to: str, text: str, buttons: list[tuple[str, str]]) -> int:
+        message = self._client.send_message(to, text, buttons=buttons)
         return int(message["message_id"])
 
-    def close_confirmation(self, to: str, handle: int, text: str) -> None:
+    def replace_message(self, to: str, handle: int, text: str) -> None:
         self._client.edit_message_text(to, handle, text)
 
     def acknowledge(self, answer: ButtonAnswer, text: str = "") -> None:
@@ -64,7 +64,12 @@ def parse_update(update: dict[str, Any], owner_id: str) -> ChatEvent | None:
         if str(sender.get("id")) != owner_id or chat.get("type") != "private":
             _log_ignored(sender)
             return None
-        return ButtonAnswer(id=callback["id"], sender=str(chat["id"]), data=callback.get("data", ""))
+        return ButtonAnswer(
+            id=callback["id"],
+            sender=str(chat["id"]),
+            data=callback.get("data", ""),
+            handle=callback.get("message", {}).get("message_id"),
+        )
 
     return None
 

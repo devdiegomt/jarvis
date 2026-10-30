@@ -7,7 +7,6 @@ import pytest
 from jarvis.agenda import SampleCalendar, build_calendar
 from jarvis.agenda.google import GoogleCalendar
 from jarvis.config import (
-    DEFAULT_CONFIG_DIR,
     DEFAULT_MODEL,
     ConfigError,
     load_settings,
@@ -17,14 +16,14 @@ from jarvis.config import (
 BASE_ENV = {"ANTHROPIC_API_KEY": "sk-test"}
 
 
-def test_defaults() -> None:
+def test_defaults(isolated_config_dir: Path) -> None:
     settings = load_settings(BASE_ENV)
 
     assert settings.model == DEFAULT_MODEL
     assert settings.calendar_source == "sample"
     assert settings.google.calendar_id == "primary"
-    assert settings.google.credentials_file == DEFAULT_CONFIG_DIR / "credentials.json"
-    assert settings.google.token_file == DEFAULT_CONFIG_DIR / "token.json"
+    assert settings.google.credentials_file == isolated_config_dir / "credentials.json"
+    assert settings.google.token_file == isolated_config_dir / "token.json"
     assert settings.timezone is not None  # la del sistema
 
 
@@ -83,12 +82,12 @@ def test_build_calendar_google_with_token(tmp_path: Path) -> None:
     assert isinstance(build_calendar(settings), GoogleCalendar)
 
 
-def test_summary_disabled_by_default() -> None:
+def test_summary_disabled_by_default(isolated_config_dir: Path) -> None:
     summary = load_settings(BASE_ENV).summary
 
     assert not summary.enabled
     assert summary.send_time == time(7, 0)
-    assert summary.db_path == DEFAULT_CONFIG_DIR / "jarvis.db"
+    assert summary.db_path == isolated_config_dir / "jarvis.db"
 
 
 def test_summary_custom_values() -> None:

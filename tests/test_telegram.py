@@ -184,7 +184,7 @@ def test_https_uses_the_operating_system_trust_store(monkeypatch: pytest.MonkeyP
 def test_owner_messages_and_buttons_are_parsed() -> None:
     assert parse_update(private_message(1), OWNER) == IncomingMessage(f"{OWNER}:11", OWNER, "hola")
     assert parse_update(private_message(2, text=None), OWNER) == IncomingMessage(f"{OWNER}:12", OWNER, None)
-    assert parse_update(button_click(3, "abc:si"), OWNER) == ButtonAnswer("cb3", OWNER, "abc:si")
+    assert parse_update(button_click(3, "abc:si"), OWNER) == ButtonAnswer("cb3", OWNER, "abc:si", handle=5)
 
 
 def test_other_users_and_groups_are_ignored() -> None:
@@ -247,8 +247,8 @@ def test_channel_confirmation_round_trip() -> None:
     api = FakeApi({"sendMessage": [{"message_id": 77}]})
     channel = TelegramChannel(TelegramClient(TOKEN, call=api))
 
-    handle = channel.ask_confirmation(OWNER, "¿Envío?", [("✅ Sí", "x:si"), ("❌ No", "x:no")])
-    channel.close_confirmation(OWNER, handle, "¿Envío?\n\n✅ Confirmado")
+    handle = channel.send_with_buttons(OWNER, "¿Envío?", [("✅ Sí", "x:si"), ("❌ No", "x:no")])
+    channel.replace_message(OWNER, handle, "¿Envío?\n\n✅ Confirmado")
     channel.acknowledge(ButtonAnswer("cb1", OWNER, "x:si"), "")
 
     assert handle == 77

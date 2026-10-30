@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.3 (cubre hasta la v0.6)
+- **Versión del documento:** 1.4 (cubre hasta la v0.7)
 - **Fecha:** 2026-10-29
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -116,6 +116,17 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   últimas líneas de los registros.
 - **RF-26.** `resumen --dry-run` indica por qué canal se enviaría el resumen.
 
+### v0.7: recordatorios
+
+- **RF-27.** El usuario crea recordatorios en lenguaje natural, con fecha y hora o con un plazo
+  relativo; no se aceptan fechas pasadas ni a más de un año.
+- **RF-28.** El usuario puede listar y cancelar sus recordatorios pendientes.
+- **RF-29.** A la hora indicada, JARVIS envía el recordatorio por Telegram con botones
+  [Posponer 10 min] y [Hecho]; si se entrega con más de 5 minutos de retraso, indica la hora original.
+- **RF-30.** Un recordatorio no se envía dos veces; si el envío falla, se reintenta.
+- **RF-31.** `jarvis estado` muestra cuántos recordatorios hay pendientes y la hora del próximo
+  (sin su texto).
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -137,6 +148,8 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   IDs y tipos de error.
 - **RNF-07.** El historial del chat se guarda solo en el equipo del usuario y se borra a los 30 días.
 - **RNF-08.** No se guarda el contenido de los resúmenes enviados, solo la fecha y hora del envío.
+- **RNF-08b.** Los recordatorios se guardan solo en el equipo; los cerrados se borran a los 30 días
+  y los registros solo contienen sus IDs.
 
 ### 4.3 Fiabilidad
 
@@ -181,4 +194,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-12 a RF-16 | `summary.py`, `summary_cli.py`, `notify/`, `scheduler.py`, `storage.py` | `test_summary.py`, `test_gmail.py`, `test_scheduler.py`, `test_storage.py` |
 | RF-17 a RF-22 | `chat.py`, `telegram/`, `memory.py`, `confirmation.py` | `test_chat.py`, `test_telegram.py`, `test_memory.py`, `test_confirmation.py` |
 | RF-23 a RF-26 | `scheduler.py`, `telegram/app.py`, `status.py`, `logs.py`, `summary_cli.py` | `test_scheduler.py`, `test_status.py`, `test_logs.py`, `test_telegram.py`, `test_summary_cli.py` |
+| RF-27 a RF-31 | `reminders.py`, `reminder_delivery.py`, `tools/recordatorios.py`, `chat.py` | `test_reminders.py`, `test_chat.py`, `test_status.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

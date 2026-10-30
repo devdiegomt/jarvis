@@ -8,6 +8,7 @@
 import logging
 import os
 import sys
+import threading
 import time
 from datetime import datetime
 from typing import Any, NoReturn
@@ -29,6 +30,8 @@ from jarvis.config import (
 from jarvis.logs import FILE_ONLY, setup_logger
 from jarvis.memory import ConversationStore
 from jarvis.prompts import build_chat_system_prompt
+from jarvis.reminder_delivery import ReminderDelivery
+from jarvis.reminders import ReminderStore
 from jarvis.telegram.bot import (
     MAX_BACKOFF_SECONDS,
     TelegramChannel,
@@ -66,26 +69,31 @@ def run_telegram(scheduled: bool = False) -> None:
         return datetime.now(settings.timezone)
 
     store = ConversationStore(settings.summary.db_path, now=now)
+    reminders = ReminderStore(settings.summary.db_path, now=now)
     anthropic_client = anthropic.Anthropic(api_key=settings.api_key)
+    channel = TelegramChannel(client)
+    delivery = ReminderDelivery(reminders, channel, telegram.owner_id, settings.timezone, now)
 
     def agent_factory(history: list, system_prompt: str, confirm: Confirmer) -> Agent:
         return Agent(
             client=anthropic_client,
-            registry=build_registry(calendar=calendar, confirm=confirm),
+            registry=build_registry(calendar, confirm=confirm, reminders=reminders, now=now),
             model=settings.model,
             system_prompt=system_prompt,
             history=history,
         )
 
     chat = ChatService(
-        channel=TelegramChannel(client),
+        channel=channel,
         store=store,
         agent_factory=agent_factory,
         system_prompt=lambda: build_chat_system_prompt(now().date()),
         now=now,
+        button_handler=delivery.handle_button,
     )
     poller = TelegramPoller(client, telegram.owner_id, deliver=chat.submit, mark_processed=store.mark_processed)
     chat.start()
+    threading.Thread(target=delivery.run_forever, name="jarvis-recordatorios", daemon=True).start()
 
     print(f"JARVIS conectado a Telegram como @{bot_name} (calendario: {calendar.name}).")
     print("Escríbele a tu bot desde Telegram. Ctrl+C para detener.\n")

@@ -27,8 +27,12 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   comando `estado`, registros rotativos y canal visible en `resumen --dry-run`.
   Ver `docs/adr/007-telegram-en-segundo-plano.md`. v0.6.1: `estado` encuentra PowerShell aunque no
   esté en el PATH y muestra la última ejecución y el resultado de cada tarea.
-- **Siguiente (por definir):** por ejemplo, avisos de mensajes de clientes desde otra fuente
-  (Gmail, CRM) o servidor en la nube.
+- **v0.7 (hecha):** recordatorios (crear, listar, cancelar) entregados por Telegram con botones
+  [Posponer 10 min] [Hecho]. Ver `docs/adr/008-recordatorios.md`.
+- **v0.8 (siguiente):** notas de voz en Telegram (transcripción y respuesta con voz opcional).
+- Después, en este orden: pendientes y memoria a largo plazo; "Oye JARVIS" en el PC (palabra de
+  activación); búsqueda en internet; escribir en el calendario; avisos proactivos; Gmail (avisos
+  de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
 Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar cada versión).
@@ -65,6 +69,8 @@ jarvis/
 │   ├── logs.py         # registros rotativos (solo resultados, nunca contenido)
 │   ├── storage.py      # SQLite: registro de resúmenes enviados
 │   ├── memory.py       # SQLite: conversaciones persistentes del chat, retención y duplicados
+│   ├── reminders.py    # SQLite: recordatorios (crear, cancelar, posponer, vencidos)
+│   ├── reminder_delivery.py # entrega de recordatorios por el chat y sus botones
 │   ├── confirmation.py # interpretación de respuestas s/n, común a todos los canales
 │   ├── chat.py         # chat independiente del canal: agente, confirmaciones, comandos, memoria
 │   ├── telegram/       # canal de Telegram
@@ -74,7 +80,8 @@ jarvis/
 │   ├── tools/          # una tool por archivo + registro central
 │   │   ├── __init__.py # tools integradas y build_registry()
 │   │   ├── registry.py # registro: nombre -> (schema, función), confirmación y errores
-│   │   └── ...
+│   │   ├── recordatorios.py # crear_recordatorio, listar_recordatorios, cancelar_recordatorio
+│   │   └── ...         # reuniones.py, mensajes.py
 │   └── cli.py          # punto de entrada por consola (chat de consola y subcomandos)
 ├── tests/
 ├── .github/workflows/  # CI: pytest en cada PR y push a main
@@ -93,7 +100,8 @@ jarvis/
 - El loop del agente tiene un límite máximo de iteraciones para evitar ciclos infinitos.
 - Errores de una tool se devuelven al modelo como resultado con `is_error`, no rompen el programa.
 - Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram) y al
-  sistema (Programador de tareas) se mockean en los tests.
+  sistema (Programador de tareas) se mockean en los tests. Ningún test escribe en `~/.config/jarvis`
+  (`tests/conftest.py` lo redirige a una carpeta temporal).
 - Al terminar una versión: actualizar este archivo (roadmap) y agregar un ADR si hubo una decisión relevante.
 
 ## Seguridad (obligatorio)
@@ -110,7 +118,8 @@ jarvis/
   preservado del modelo): para empezar de cero, se abre una conversación nueva.
 - Mantener `.env.example` actualizado con los nombres de las variables, sin valores reales.
 - Toda tool que tenga efectos externos (enviar mensajes, crear eventos, borrar algo) debe pedir
-  confirmación al usuario antes de ejecutarse. Las tools de solo lectura no la necesitan.
+  confirmación al usuario antes de ejecutarse. Las tools de solo lectura no la necesitan, ni las
+  que solo cambian datos internos de JARVIS y se pueden deshacer (por ejemplo, recordatorios).
 - No loguear contenido sensible (mensajes completos, datos de clientes) en producción. El historial
   de conversaciones se guarda solo en el equipo y se borra a los 30 días. Los registros usan
   `jarvis.logs` (rotativos).
