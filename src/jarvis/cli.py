@@ -7,6 +7,7 @@
 - `uv run jarvis telegram`: chatear con JARVIS por Telegram.
 - `uv run jarvis telegram-vincular`: obtener tu ID de Telegram (TELEGRAM_OWNER_ID).
 - `uv run jarvis programar-telegram` / `quitar-telegram`: JARVIS en segundo plano al iniciar sesión.
+- `uv run jarvis preparar-voz`: descarga el modelo de voz (Whisper) para las notas de voz.
 - `uv run jarvis estado`: configuración, tareas programadas y registros.
 """
 
@@ -25,6 +26,7 @@ from jarvis.config import (
     load_google_settings,
     load_settings,
     load_summary_settings,
+    load_voice_settings,
     read_env,
 )
 from jarvis.confirmation import CONFIRMATION_QUESTION, parse_yes_no
@@ -138,6 +140,37 @@ def run_google_login() -> None:
     print("Con JARVIS_CALENDAR=google en tu .env, `uv run jarvis` usará tu calendario real.")
 
 
+def run_prepare_voice() -> None:
+    """`jarvis preparar-voz`: descarga una sola vez el modelo de Whisper para las notas de voz."""
+    from jarvis.voice import INSTALL_HINT, VoiceDownloadError, download_model, model_downloaded, whisper_installed
+
+    try:
+        voice = load_voice_settings(read_env())
+    except ConfigError as exc:
+        print(f"Error de configuración: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if not voice.enabled:
+        print("Las notas de voz están desactivadas (JARVIS_TRANSCRIPCION=no en tu .env).")
+        return
+    if not whisper_installed():
+        print(f"Falta instalar la transcripción de voz: ejecuta {INSTALL_HINT}.", file=sys.stderr)
+        sys.exit(1)
+
+    target = voice.models_dir / voice.model
+    if model_downloaded(target):
+        print(f"El modelo de voz «{voice.model}» ya está descargado en {target}.")
+        return
+    print(f"Descargando el modelo de voz «{voice.model}». Se hace una sola vez y puede tardar unos")
+    print("minutos (el modelo «small» pesa unos 500 MB)…\n")
+    try:
+        download_model(voice.model, voice.models_dir)
+    except VoiceDownloadError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"\nListo: modelo guardado en {target}.")
+    print("Envíale una nota de voz a tu bot para probarlo.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS, tu asistente personal.")
     commands = parser.add_subparsers(dest="command")
@@ -155,6 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("telegram-vincular", help="Muestra tu ID de Telegram para TELEGRAM_OWNER_ID.")
     commands.add_parser("programar-telegram", help="Arranca JARVIS en segundo plano al iniciar sesión.")
     commands.add_parser("quitar-telegram", help="Detiene JARVIS en segundo plano y quita el arranque.")
+    commands.add_parser("preparar-voz", help="Descarga el modelo de voz para entender notas de voz.")
     commands.add_parser("estado", help="Muestra la configuración, las tareas programadas y los registros.")
     return parser
 
@@ -186,6 +220,8 @@ def main(argv: list[str] | None = None) -> None:
         from jarvis.telegram.app import run_schedule_remove
 
         run_schedule_remove()
+    elif args.command == "preparar-voz":
+        run_prepare_voice()
     elif args.command == "estado":
         from jarvis.status import run_status
 

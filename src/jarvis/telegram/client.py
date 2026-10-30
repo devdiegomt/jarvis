@@ -16,9 +16,13 @@ from jarvis.chat import ChannelError
 API_URL = "https://api.telegram.org"
 POLL_TIMEOUT_SECONDS = 30  # long polling: Telegram mantiene la consulta abierta hasta 30 s
 REQUEST_MARGIN_SECONDS = 15
+DOWNLOAD_TIMEOUT_SECONDS = 60
+MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024  # límite de descarga de la API de bots
 
 # Llama a un método de la API y devuelve el JSON de respuesta (reemplazable en los tests).
 Caller = Callable[[str, dict[str, Any], float], dict[str, Any]]
+# Descarga un archivo (URL, tiempo máximo, tamaño máximo) y devuelve sus bytes (reemplazable en los tests).
+Downloader = Callable[[str, float, int], bytes]
 
 
 class TelegramError(ChannelError):
@@ -42,9 +46,11 @@ class TelegramConflictError(TelegramError):
 
 
 class TelegramClient:
-    def __init__(self, bot_token: str, call: Caller | None = None) -> None:
+    def __init__(self, bot_token: str, call: Caller | None = None, download: Downloader | None = None) -> None:
         self._base_url = f"{API_URL}/bot{bot_token}"
+        self._file_url = f"{API_URL}/file/bot{bot_token}"
         self._call = call or http_call
+        self._download = download or http_download
 
     def get_me(self) -> dict[str, Any]:
         return self._request("getMe", {})
@@ -85,6 +91,16 @@ class TelegramClient:
     def send_typing(self, chat_id: str) -> None:
         self._request("sendChatAction", {"chat_id": chat_id, "action": "typing"})
 
+    def download_file(self, file_id: str) -> bytes:
+        """Descarga un archivo enviado al bot (por ejemplo, una nota de voz) a memoria."""
+        info = self._request("getFile", {"file_id": file_id})
+        if int(info.get("file_size") or 0) > MAX_DOWNLOAD_BYTES:
+            raise TelegramError("El archivo es demasiado grande para descargarlo (máximo 20 MB).")
+        if "file_path" not in info:
+            raise TelegramError("Telegram no permitió descargar el archivo.")
+        url = f"{self._file_url}/{info['file_path']}"
+        return self._download(url, DOWNLOAD_TIMEOUT_SECONDS, MAX_DOWNLOAD_BYTES)
+
     def _request(self, method: str, params: dict[str, Any], timeout: float = REQUEST_MARGIN_SECONDS) -> Any:
         response = self._call(f"{self._base_url}/{method}", params, timeout)
         if not response.get("ok"):
@@ -113,6 +129,24 @@ def http_call(url: str, params: dict[str, Any], timeout: float) -> dict[str, Any
         raise _network_error(exc.reason) from None
     except OSError as exc:  # incluye TimeoutError
         raise _network_error(exc) from None
+
+
+def http_download(url: str, timeout: float, max_bytes: int) -> bytes:
+    """GET de un archivo. Como en `http_call`, los errores nunca incluyen la URL (lleva el token)."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout, context=_ssl_context()) as response:
+            data = response.read(max_bytes + 1)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429 or exc.code >= 500:
+            raise _api_error(exc.code, "") from None
+        raise TelegramError(f"Telegram no entregó el archivo ({exc.code}).") from None
+    except urllib.error.URLError as exc:
+        raise _network_error(exc.reason) from None
+    except OSError as exc:  # incluye TimeoutError
+        raise _network_error(exc) from None
+    if len(data) > max_bytes:
+        raise TelegramError("El archivo es demasiado grande para descargarlo (máximo 20 MB).")
+    return data
 
 
 @cache

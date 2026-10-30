@@ -8,9 +8,9 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.7**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en segundo
-plano), te crea recordatorios y te envía un resumen del día de lunes a viernes (por Telegram o
-Gmail). El envío de mensajes a terceros sigue simulado.
+**v0.8**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en segundo
+plano) escribiéndole o con notas de voz, te crea recordatorios y te envía un resumen del día de lunes
+a viernes (por Telegram o Gmail). El envío de mensajes a terceros sigue simulado.
 Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
 
 ## Requisitos
@@ -214,6 +214,40 @@ Los recordatorios se guardan en tu equipo (`jarvis.db`); los ya enviados o cance
 los 30 días. Crear o cancelar un recordatorio no pide confirmación: es interno a JARVIS y siempre
 se puede deshacer. `uv run jarvis estado` muestra cuántos hay pendientes y la hora del próximo.
 
+## Notas de voz
+
+Mándale a tu bot una nota de voz como harías con una persona. JARVIS la transcribe en tu PC, te
+muestra lo que entendió (*🎙 Entendí: «recuérdame a las 5 llamar a Laura»*) y responde. También
+puedes contestar "sí" o "no" con una nota de voz cuando te pide una confirmación.
+
+### Activarlas (una sola vez)
+
+```bash
+uv sync
+uv run jarvis preparar-voz
+```
+
+- `uv sync` instala la transcripción local ([faster-whisper](https://github.com/SYSTRAN/faster-whisper)).
+- `preparar-voz` descarga el modelo de voz a `~/.config/jarvis/voz/`. El modelo `small` (por defecto)
+  pesa unos 500 MB; se descarga una sola vez.
+
+Si JARVIS ya corría en segundo plano, reinícialo para que use la versión nueva:
+`uv run jarvis quitar-telegram` y luego `uv run jarvis programar-telegram`.
+`uv run jarvis estado` muestra si las notas de voz están activas.
+
+### Privacidad y límites
+
+- El audio nunca sale de tu PC ni se guarda en disco: se transcribe en memoria y se descarta.
+  Lo transcrito queda en el historial del chat como cualquier mensaje (se borra a los 30 días).
+- Notas de hasta 5 minutos. La primera nota tras arrancar JARVIS tarda unos segundos más, mientras
+  carga el modelo.
+- Si las transcripciones fallan a menudo, prueba un modelo mayor en `.env`
+  (`JARVIS_WHISPER_MODELO=medium` o `large-v3-turbo`, más precisos y más lentos) o uno menor si van
+  lentas (`base`). Después de cambiarlo, vuelve a ejecutar `preparar-voz`.
+- Para desactivarlas: `JARVIS_TRANSCRIPCION=no`.
+- Si `preparar-voz` falla con un error de certificados, es el mismo caso del antivirus que se
+  explica en la sección de Telegram (la descarga es desde `huggingface.co`).
+
 ## Resumen diario
 
 JARVIS puede enviarte cada mañana, de lunes a viernes, tus reuniones del día y un comentario breve
@@ -287,7 +321,7 @@ Cada ejecución queda registrada (solo el resultado, nunca el contenido) en
 uv run jarvis estado
 ```
 
-Resume la configuración (calendario, canal del resumen, Telegram), si las tareas programadas están
+Resume la configuración (calendario, canal del resumen, Telegram, notas de voz), si las tareas programadas están
 activas y las últimas líneas de los registros. Los registros solo contienen resultados, nunca el
 texto de tus mensajes.
 
@@ -308,6 +342,8 @@ texto de tus mensajes.
 | `JARVIS_DB_PATH` | Base de datos local (SQLite) | `~/.config/jarvis/jarvis.db` |
 | `TELEGRAM_BOT_TOKEN` | Token del bot (de @BotFather) | |
 | `TELEGRAM_OWNER_ID` | Tu ID de Telegram, el único que JARVIS atiende (`telegram-vincular`) | |
+| `JARVIS_TRANSCRIPCION` | Notas de voz: `local` (Whisper en el PC) o `no` (desactivadas) | `local` |
+| `JARVIS_WHISPER_MODELO` | Modelo de Whisper: `tiny`, `base`, `small`, `medium`, `large-v3-turbo`… | `small` |
 
 ## Tests
 
@@ -315,8 +351,8 @@ texto de tus mensajes.
 uv run pytest
 ```
 
-Los tests no llaman a ninguna API real (Anthropic, Google, Telegram y el Programador de tareas
-están simulados). GitHub Actions los ejecuta en cada pull request y en cada push a `main`.
+Los tests no llaman a ninguna API real (Anthropic, Google, Telegram, Whisper y el Programador de
+tareas están simulados) y no necesitan el grupo de voz (`uv sync --no-group voz`). GitHub Actions los ejecuta en cada pull request y en cada push a `main`.
 
 ## Documentación
 

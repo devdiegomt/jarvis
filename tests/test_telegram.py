@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 import truststore
 
-from jarvis.chat import ButtonAnswer, IncomingMessage
+from jarvis.chat import ButtonAnswer, IncomingMessage, VoiceNote
 from jarvis.notify import NotificationError, NotificationNotAuthorizedError
 from jarvis.notify.telegram import TelegramNotifier
 from jarvis.telegram import client as client_module
@@ -326,3 +326,66 @@ def test_manual_poller_stops_when_another_copy_uses_the_bot() -> None:
 
     with pytest.raises(TelegramConflictError):
         poller.run_forever()
+
+
+# --- Notas de voz -----------------------------------------------------------
+
+
+def test_voice_notes_are_parsed() -> None:
+    update = private_message(1, text=None)
+    update["message"]["voice"] = {"file_id": "voz-123", "duration": 7, "mime_type": "audio/ogg"}
+
+    assert parse_update(update, OWNER) == IncomingMessage(f"{OWNER}:11", OWNER, None, VoiceNote("voz-123", 7))
+
+
+def test_voice_download_asks_for_the_file_and_downloads_it() -> None:
+    api = FakeApi({"getFile": [{"file_id": "voz-123", "file_size": 2048, "file_path": "voice/file_7.oga"}]})
+    downloads: list[tuple[str, int]] = []
+
+    def download(url: str, _timeout: float, max_bytes: int) -> bytes:
+        downloads.append((url, max_bytes))
+        return b"ogg"
+
+    channel = TelegramChannel(TelegramClient(TOKEN, call=api, download=download))
+
+    assert channel.download_voice(VoiceNote("voz-123", 7)) == b"ogg"
+    assert api.calls == [("getFile", {"file_id": "voz-123"})]
+    assert downloads == [(f"https://api.telegram.org/file/bot{TOKEN}/voice/file_7.oga", 20 * 1024 * 1024)]
+
+
+def test_files_over_the_limit_are_not_downloaded() -> None:
+    api = FakeApi({"getFile": [{"file_size": 30 * 1024 * 1024, "file_path": "voice/grande.oga"}]})
+
+    def download(*_args: Any) -> bytes:
+        raise AssertionError("no debía descargarse")
+
+    with pytest.raises(TelegramError, match="demasiado grande"):
+        TelegramClient(TOKEN, call=api, download=download).download_file("voz")
+
+
+def test_file_download_errors_never_expose_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    url = f"https://api.telegram.org/file/bot{TOKEN}/voice/file_7.oga"
+
+    def not_found(*_args: Any, **_kwargs: Any) -> Any:
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b""))  # type: ignore[arg-type]
+
+    monkeypatch.setattr(client_module.urllib.request, "urlopen", not_found)
+
+    with pytest.raises(TelegramError) as excinfo:
+        client_module.http_download(url, 5, 100)
+    assert TOKEN not in str(excinfo.value)
+    assert excinfo.value.__cause__ is None
+
+
+def test_file_download_uses_the_trust_store_and_enforces_the_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    contexts: list[Any] = []
+
+    def capture(_url: str, timeout: float, context: Any) -> Any:
+        contexts.append(context)
+        return io.BytesIO(b"x" * 101)
+
+    monkeypatch.setattr(client_module.urllib.request, "urlopen", capture)
+
+    with pytest.raises(TelegramError, match="demasiado grande"):
+        client_module.http_download("https://api.telegram.org/file/botX/a.oga", 5, 100)
+    assert isinstance(contexts[0], truststore.SSLContext)

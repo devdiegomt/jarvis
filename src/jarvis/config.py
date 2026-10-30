@@ -1,6 +1,7 @@
 """Carga de configuración desde variables de entorno y el archivo .env."""
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, time, tzinfo
@@ -17,6 +18,9 @@ DEFAULT_SUMMARY_TIME = time(7, 0)
 SUMMARY_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "resumen.log"
 TELEGRAM_LOG_FILE = DEFAULT_CONFIG_DIR / "logs" / "telegram.log"
 SUMMARY_CHANNELS = ("gmail", "telegram")
+# Transcripción de notas de voz: "local" (Whisper en el equipo) o "no" (desactivada).
+TRANSCRIPTION_ENGINES = ("local", "no")
+DEFAULT_WHISPER_MODEL = "small"
 
 
 class ConfigError(Exception):
@@ -55,6 +59,19 @@ class TelegramSettings:
 
 
 @dataclass(frozen=True)
+class VoiceSettings:
+    """Notas de voz. `engine` dice quién transcribe; hoy solo "local" (o "no" para desactivarlas)."""
+
+    engine: str
+    model: str  # modelo de Whisper: tiny, base, small, medium, large-v3-turbo…
+    models_dir: Path  # carpeta donde `preparar-voz` descarga los modelos
+
+    @property
+    def enabled(self) -> bool:
+        return self.engine != "no"
+
+
+@dataclass(frozen=True)
 class Settings:
     api_key: str
     model: str
@@ -62,6 +79,7 @@ class Settings:
     calendar_source: str
     google: GoogleSettings
     summary: SummarySettings
+    voice: VoiceSettings
 
 
 def read_env() -> Mapping[str, str]:
@@ -85,6 +103,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         calendar_source=_load_calendar_source(env),
         google=load_google_settings(env),
         summary=load_summary_settings(env),
+        voice=load_voice_settings(env),
     )
 
 
@@ -127,6 +146,21 @@ def load_summary_settings(env: Mapping[str, str]) -> SummarySettings:
         send_time=_load_time(env, "JARVIS_RESUMEN_HORA", DEFAULT_SUMMARY_TIME),
         db_path=_path(env, "JARVIS_DB_PATH", DEFAULT_CONFIG_DIR / "jarvis.db"),
     )
+
+
+def load_voice_settings(env: Mapping[str, str]) -> VoiceSettings:
+    engine = (_get(env, "JARVIS_TRANSCRIPCION") or "local").lower()
+    if engine not in TRANSCRIPTION_ENGINES:
+        raise ConfigError(
+            f"JARVIS_TRANSCRIPCION='{engine}' no es válido. Opciones: {', '.join(TRANSCRIPTION_ENGINES)}."
+        )
+    model = (_get(env, "JARVIS_WHISPER_MODELO") or DEFAULT_WHISPER_MODEL).lower()
+    # El nombre se usa como carpeta: solo letras, números, puntos y guiones.
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.\-]*", model):
+        raise ConfigError(
+            f"JARVIS_WHISPER_MODELO='{model}' no es válido. Ejemplos: tiny, base, small, medium."
+        )
+    return VoiceSettings(engine=engine, model=model, models_dir=DEFAULT_CONFIG_DIR / "voz")
 
 
 def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:
