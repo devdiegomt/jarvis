@@ -161,13 +161,14 @@ def run_schedule_install() -> None:
 
 def run_schedule_remove() -> None:
     """`jarvis quitar-telegram`: detiene JARVIS en segundo plano y quita el arranque automático."""
-    from jarvis.scheduler import TELEGRAM_TASK, SchedulerError, remove_task, stop_task, task_state
+    from jarvis.scheduler import TELEGRAM_TASK, SchedulerError, remove_task, stop_task, task_info
 
     if os.name != "nt":
         print("En Mac o Linux, quita la línea de JARVIS de tu crontab con `crontab -e`.")
         return
     try:
-        if task_state(TELEGRAM_TASK) == "Running":
+        info = task_info(TELEGRAM_TASK)
+        if info is not None and info.state == "Running":
             stop_task(TELEGRAM_TASK)
         remove_task(TELEGRAM_TASK)
     except SchedulerError as exc:

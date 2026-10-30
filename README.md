@@ -181,7 +181,8 @@ reinicia hasta 3 veces. Solo funciona con tu sesión iniciada (no guarda tu cont
 ### Problemas comunes
 
 - **JARVIS no responde**: ejecuta `uv run jarvis estado`. Muestra si la tarea en segundo plano está
-  corriendo y las últimas líneas del registro, donde aparece la causa si se detuvo.
+  corriendo, cuándo se ejecutó por última vez y con qué resultado, y las últimas líneas del
+  registro, donde aparece la causa si se detuvo.
 - **"El token del bot no es válido"**: revisa `TELEGRAM_BOT_TOKEN` (cópialo completo, con el número
   y los dos puntos).
 - **"Otra copia de JARVIS está usando este bot"**: solo puede haber un `jarvis telegram` corriendo

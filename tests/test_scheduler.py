@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from jarvis import scheduler
 from jarvis.scheduler import (
     SUMMARY_ARGUMENTS,
     SUMMARY_TASK,
@@ -21,7 +22,9 @@ from jarvis.scheduler import (
     start_task,
     stop_task,
     summary_task_xml,
-    task_state,
+    TaskInfo,
+    describe_result,
+    task_info,
     telegram_task_xml,
 )
 
@@ -144,16 +147,60 @@ def test_missing_schtasks_raises_scheduler_error() -> None:
         remove_task(SUMMARY_TASK, run=run)
 
 
-def test_task_state_queries_powershell_in_the_jarvis_folder() -> None:
-    run = FakeRun(stdout="Running\r\n")
+@pytest.fixture
+def powershell(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(scheduler.shutil, "which", lambda name: f"C:/ps/{name}.exe" if name == "powershell" else None)
 
-    assert task_state(TELEGRAM_TASK, run=run) == "Running"
+
+def test_task_info_queries_powershell_in_the_jarvis_folder(powershell: None) -> None:
+    run = FakeRun(stdout="Ready|1|2026-10-29 18:35\r\n")
+
+    info = task_info(TELEGRAM_TASK, run=run)
+
+    assert info == TaskInfo(state="Ready", last_result=1, last_run="2026-10-29 18:35")
+    assert run.calls[0][0] == "C:/ps/powershell.exe"
     script = run.calls[0][-1]
     assert "-TaskPath '\\JARVIS\\'" in script and "-TaskName 'Telegram'" in script
+    assert '"' not in script  # sin comillas dobles: se escapan mal al pasar por la línea de comandos
 
 
-def test_task_state_of_missing_task_is_none() -> None:
-    assert task_state(TELEGRAM_TASK, run=FakeRun(stdout="")) is None
+def test_task_info_of_missing_task_is_none(powershell: None) -> None:
+    assert task_info(TELEGRAM_TASK, run=FakeRun(stdout="")) is None
+
+
+def test_task_info_of_task_that_never_ran(powershell: None) -> None:
+    info = task_info(TELEGRAM_TASK, run=FakeRun(stdout="Ready|267011|1899-12-30 00:00"))
+
+    assert info is not None and info.last_run is None
+
+
+def test_powershell_is_found_outside_the_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    builtin = tmp_path / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    builtin.parent.mkdir(parents=True)
+    builtin.touch()
+    monkeypatch.setattr(scheduler.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+    run = FakeRun(stdout="Running|267009|2026-10-29 18:35")
+
+    task_info(TELEGRAM_TASK, run=run)
+
+    assert run.calls[0][0] == str(builtin)
+
+
+def test_missing_powershell_raises_scheduler_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(scheduler.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+
+    with pytest.raises(SchedulerError, match="PowerShell"):
+        task_info(TELEGRAM_TASK, run=FakeRun())
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [(0, "correcta"), (0x41303, "todavía no"), (0x80070002, "no se encontró el programa"), (1, "código 0x1")],
+)
+def test_describe_result(code: int, expected: str) -> None:
+    assert expected in describe_result(code)
 
 
 # --- Comando y cron ---------------------------------------------------------

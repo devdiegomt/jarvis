@@ -13,7 +13,7 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.logs import tail
-from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError
+from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskInfo, describe_result
 
 LOG_LINES = 5
 
@@ -26,20 +26,20 @@ _STATES = {
     "Disabled": "desactivada en el Programador de tareas",
 }
 
-TaskStateReader = Callable[[str], str | None]
+TaskInfoReader = Callable[[str], TaskInfo | None]
 
 
 def status_report(
     env: Mapping[str, str],
-    read_task_state: TaskStateReader | None,
+    read_task_info: TaskInfoReader | None,
     logs: Mapping[str, Path],
     log_lines: int = LOG_LINES,
 ) -> list[str]:
-    """Líneas del informe. `read_task_state=None` significa que no es Windows."""
+    """Líneas del informe. `read_task_info=None` significa que no es Windows."""
     lines = ["Estado de JARVIS", ""]
     lines += _config_lines(env)
     lines.append("")
-    lines += _task_lines(read_task_state)
+    lines += _task_lines(read_task_info)
     for label, log_file in logs.items():
         lines += ["", f"Últimas líneas de {label} ({log_file}):"]
         lines += [f"  {line}" for line in tail(log_file, log_lines)] or ["  (sin registros todavía)"]
@@ -47,11 +47,11 @@ def status_report(
 
 
 def run_status() -> None:
-    from jarvis.scheduler import task_state
+    from jarvis.scheduler import task_info
 
     report = status_report(
         read_env(),
-        read_task_state=task_state if os.name == "nt" else None,
+        read_task_info=task_info if os.name == "nt" else None,
         logs={"Telegram": TELEGRAM_LOG_FILE, "Resumen": SUMMARY_LOG_FILE},
     )
     print("\n".join(report))
@@ -81,17 +81,20 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     return lines
 
 
-def _task_lines(read_task_state: TaskStateReader | None) -> list[str]:
-    if read_task_state is None:
+def _task_lines(read_task_info: TaskInfoReader | None) -> list[str]:
+    if read_task_info is None:
         return ["Tareas programadas: solo disponibles en Windows (en Mac o Linux se usa cron)."]
     lines = ["Tareas programadas:"]
     for name, label in ((SUMMARY_TASK, "Resumen diario"), (TELEGRAM_TASK, "Telegram en segundo plano")):
         try:
-            state = read_task_state(name)
+            info = read_task_info(name)
         except SchedulerError as exc:
             lines.append(f"  {label}: no se pudo consultar ({exc})")
             continue
+        state = info.state if info else None
         lines.append(f"  {label}: {_STATES.get(state, state)}")
+        if info is not None and info.last_run is not None and info.last_result is not None:
+            lines.append(f"    Última ejecución: {info.last_run} ({describe_result(info.last_result)})")
         if name == TELEGRAM_TASK and state == "Ready":
             lines.append(
                 "    No está corriendo ahora: arranca al iniciar sesión, o ya mismo con "

@@ -6,6 +6,7 @@
 
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -144,28 +145,71 @@ def remove_task(name: str, run: Runner = subprocess.run) -> None:
     _run(["schtasks", "/Delete", "/TN", name, "/F"], run)
 
 
-def task_state(name: str, run: Runner = subprocess.run) -> str | None:
-    """Estado de la tarea (`Ready`, `Running`, `Disabled`…) o None si no existe.
+@dataclass(frozen=True)
+class TaskInfo:
+    state: str  # `Ready`, `Running`, `Disabled`… (en inglés en cualquier idioma de Windows)
+    last_result: int | None  # código de la última ejecución (0 = correcta)
+    last_run: str | None  # fecha y hora de la última ejecución, o None si nunca se ejecutó
+
+
+# Códigos frecuentes de la última ejecución (Programador de tareas).
+_NEVER_RUN = 0x41303
+_RESULTS = {
+    0: "correcta",
+    0x41301: "en ejecución",
+    _NEVER_RUN: "todavía no se ha ejecutado",
+    0x41306: "detenida por el usuario",
+    0x8004131F: "ya había una copia en ejecución",
+    0xC000013A: "interrumpida (sesión cerrada o Ctrl+C)",
+    0x80070002: "no se encontró el programa (¿se movió la carpeta del proyecto?)",
+}
+
+
+def describe_result(code: int) -> str:
+    return _RESULTS.get(code, f"terminó con error (código {code:#x})")
+
+
+def task_info(name: str, run: Runner = subprocess.run) -> TaskInfo | None:
+    """Estado y última ejecución de la tarea, o None si no existe.
 
     Se consulta con PowerShell porque devuelve el estado en inglés, sea cual sea el idioma
     de Windows (la salida de `schtasks /Query` está traducida).
     """
     folder, _, task = name.rpartition("\\")
+    # Solo comillas simples: las dobles se escapan de forma distinta al pasar por la línea de comandos.
     script = (
-        f"(Get-ScheduledTask -TaskPath '\\{folder}\\' -TaskName '{task}' "
-        "-ErrorAction SilentlyContinue).State"
+        f"$t = Get-ScheduledTask -TaskPath '\\{folder}\\' -TaskName '{task}' "
+        "-ErrorAction SilentlyContinue; "
+        "if ($t) { $i = $t | Get-ScheduledTaskInfo; "
+        "[string]$t.State + '|' + [string]$i.LastTaskResult + '|' "
+        "+ $i.LastRunTime.ToString('yyyy-MM-dd HH:mm') }"
     )
-    try:
-        result = run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True,
-            text=True,
-            errors="replace",
-        )
-    except FileNotFoundError as exc:
-        raise SchedulerError("No encontré PowerShell. Este comando solo funciona en Windows.") from exc
-    state = (result.stdout or "").strip()
-    return state or None
+    result = run(
+        [_powershell(), "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    output = (result.stdout or "").strip()
+    if not output:
+        return None
+    state, _, rest = output.partition("|")
+    code_text, _, last_run = rest.partition("|")
+    last_result = int(code_text) if code_text.strip().isdigit() else None
+    never_ran = last_result == _NEVER_RUN or last_run.startswith(("1899", "0001"))
+    return TaskInfo(state, last_result, None if never_ran else (last_run or None))
+
+
+def _powershell() -> str:
+    """Ruta de PowerShell: en el PATH o en su ubicación fija de Windows."""
+    for name in ("powershell", "pwsh"):
+        if path := shutil.which(name):
+            return path
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    builtin = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if builtin.exists():
+        return str(builtin)
+    raise SchedulerError("No encontré PowerShell. Este comando solo funciona en Windows.")
 
 
 def cron_line(command: ScheduledCommand, send_time: time) -> str:
