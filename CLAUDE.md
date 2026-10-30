@@ -25,7 +25,8 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   con antivirus o proxy que inspeccionan el tráfico. Ver `docs/adr/006-verificacion-tls-sistema.md`.
 - **v0.6 (hecha):** JARVIS en segundo plano al iniciar sesión en Windows (`programar-telegram`),
   comando `estado`, registros rotativos y canal visible en `resumen --dry-run`.
-  Ver `docs/adr/007-telegram-en-segundo-plano.md`.
+  Ver `docs/adr/007-telegram-en-segundo-plano.md`. v0.6.1: `estado` encuentra PowerShell aunque no
+  esté en el PATH y muestra la última ejecución y el resultado de cada tarea.
 - **Siguiente (por definir):** por ejemplo, avisos de mensajes de clientes desde otra fuente
   (Gmail, CRM) o servidor en la nube.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.

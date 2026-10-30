@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError
+from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskInfo
 from jarvis.status import status_report
 
 FULL_ENV = {
@@ -13,12 +13,16 @@ FULL_ENV = {
 }
 
 
-def states(summary: str | None, telegram: str | None):  # type: ignore[no-untyped-def]
-    return lambda name: {SUMMARY_TASK: summary, TELEGRAM_TASK: telegram}[name]
+def states(summary: str | None, telegram: str | None, telegram_result: int = 0):  # type: ignore[no-untyped-def]
+    infos = {
+        SUMMARY_TASK: TaskInfo(summary, 0, "2026-10-30 07:00") if summary else None,
+        TELEGRAM_TASK: TaskInfo(telegram, telegram_result, "2026-10-29 18:35") if telegram else None,
+    }
+    return lambda name: infos[name]
 
 
-def report(env: dict[str, str], read_task_state, logs: dict[str, Path] | None = None) -> str:  # type: ignore[no-untyped-def]
-    return "\n".join(status_report(env, read_task_state, logs or {}))
+def report(env: dict[str, str], read_task_info, logs: dict[str, Path] | None = None) -> str:  # type: ignore[no-untyped-def]
+    return "\n".join(status_report(env, read_task_info, logs or {}))
 
 
 def test_full_status_on_windows(tmp_path: Path) -> None:
@@ -36,9 +40,10 @@ def test_full_status_on_windows(tmp_path: Path) -> None:
 
 
 def test_telegram_task_not_running_gets_a_hint() -> None:
-    text = report(FULL_ENV, states(None, "Ready"))
+    text = report(FULL_ENV, states(None, "Ready", telegram_result=1))
 
     assert "Resumen diario: no programada" in text
+    assert "Última ejecución: 2026-10-29 18:35 (terminó con error (código 0x1))" in text
     assert "No está corriendo ahora" in text
 
 
