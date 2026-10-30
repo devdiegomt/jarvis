@@ -68,3 +68,27 @@ def test_task_query_errors_are_reported() -> None:
         raise SchedulerError("sin PowerShell")
 
     assert "no se pudo consultar (sin PowerShell)" in report(FULL_ENV, failing)
+
+
+def test_pending_reminders_show_count_and_next_time_only(isolated_config_dir: Path) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from jarvis.reminders import ReminderStore
+
+    tz = ZoneInfo("America/Bogota")
+    store = ReminderStore(isolated_config_dir / "jarvis.db", now=lambda: datetime(2026, 10, 30, 8, 0, tzinfo=tz))
+    store.create("llamar a Laura", datetime(2026, 10, 30, 9, 0, tzinfo=tz))
+    store.create("pagar la factura", datetime(2026, 10, 31, 10, 0, tzinfo=tz))
+
+    text = report({**FULL_ENV, "JARVIS_TIMEZONE": "America/Bogota"}, None)
+
+    assert "Recordatorios pendientes: 2 (el próximo: 2026-10-30 09:00)" in text
+    assert "Laura" not in text  # el texto de los recordatorios no se muestra
+
+
+def test_status_does_not_create_the_database(isolated_config_dir: Path) -> None:
+    text = report(FULL_ENV, None)
+
+    assert "Recordatorios pendientes: ninguno" in text
+    assert not (isolated_config_dir / "jarvis.db").exists()

@@ -8,9 +8,9 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.5**: lee tu Google Calendar (solo lectura), puedes chatear con JARVIS por Telegram y te envía
-un resumen del día de lunes a viernes (por Telegram o Gmail). El envío de mensajes a terceros sigue
-simulado.
+**v0.7**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en segundo
+plano), te crea recordatorios y te envía un resumen del día de lunes a viernes (por Telegram o
+Gmail). El envío de mensajes a terceros sigue simulado.
 Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
 
 ## Requisitos
@@ -196,6 +196,23 @@ reinicia hasta 3 veces. Solo funciona con tu sesión iniciada (no guarda tu cont
   `https://api.telegram.org` en el navegador, pulsa el candado y mira **Emitido por**: debería ser
   tu antivirus. Si no reconoces al emisor, no sigas y revisa tu red. Si es tu antivirus y aun así
   falla, añade `api.telegram.org` a sus exclusiones de análisis HTTPS.
+
+## Recordatorios
+
+Pídeselos a JARVIS en lenguaje natural, por Telegram o en la consola:
+
+- *"Recuérdame mañana a las 9 llamar a Laura"*
+- *"Recuérdame en 2 horas tomar agua"*
+- *"¿Qué recordatorios tengo?"* / *"Cancela el de llamar a Laura"*
+
+A la hora indicada te llega un mensaje por Telegram con dos botones: **⏰ Posponer 10 min** y
+**✅ Hecho**. Los avisa el proceso de Telegram, así que debe estar corriendo (en segundo plano con
+`programar-telegram`, o con `uv run jarvis telegram`). Si el PC estaba apagado a esa hora, el aviso
+llega al volver, marcado como atrasado.
+
+Los recordatorios se guardan en tu equipo (`jarvis.db`); los ya enviados o cancelados se borran a
+los 30 días. Crear o cancelar un recordatorio no pide confirmación: es interno a JARVIS y siempre
+se puede deshacer. `uv run jarvis estado` muestra cuántos hay pendientes y la hora del próximo.
 
 ## Resumen diario
 

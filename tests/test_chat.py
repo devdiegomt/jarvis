@@ -53,13 +53,13 @@ class FakeChannel:
             raise ChannelError("sin red")
         self.typing += 1
 
-    def ask_confirmation(self, to: str, prompt: str, buttons: list[tuple[str, str]]) -> int:
+    def send_with_buttons(self, to: str, prompt: str, buttons: list[tuple[str, str]]) -> int:
         self.questions.append((prompt, buttons))
         if self.on_ask:
             self.on_ask()
         return len(self.questions)
 
-    def close_confirmation(self, to: str, handle: int, text: str) -> None:
+    def replace_message(self, to: str, handle: int, text: str) -> None:
         self.closed.append((handle, text))
 
     def acknowledge(self, answer: ButtonAnswer, text: str = "") -> None:
@@ -301,3 +301,27 @@ def test_split_text_prefers_paragraph_boundaries() -> None:
 
 def test_split_text_never_returns_empty_message() -> None:
     assert split_text("   ", limit=100) == ["(sin respuesta)"]
+
+
+def test_other_buttons_go_to_the_button_handler(tmp_path: Path) -> None:
+    handled: list[str] = []
+    setup = Setup(tmp_path, [], button_handler=lambda answer: handled.append(answer.data) or True)
+
+    setup.click("rem:1:hecho")
+    setup.process()
+
+    assert handled == ["rem:1:hecho"]
+    assert setup.channel.acks == []
+
+
+def test_reminder_button_during_a_confirmation_is_still_handled(tmp_path: Path) -> None:
+    handled: list[str] = []
+    setup = confirmation_flow(tmp_path, button_handler=lambda answer: handled.append(answer.data) or True)
+
+    setup.message("Avisa a Ana")
+    setup.click("rem:1:posponer")
+    setup.message("s")
+    setup.process()
+
+    assert handled == ["rem:1:posponer"]
+    assert setup.actions == ["avisar a Ana"]

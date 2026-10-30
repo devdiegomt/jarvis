@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from pathlib import Path
 
 from jarvis.config import (
@@ -13,6 +14,7 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.logs import tail
+from jarvis.reminders import ReminderStore
 from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskInfo, describe_result
 
 LOG_LINES = 5
@@ -78,6 +80,18 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
         lines.append("Telegram: bot configurado y cuenta vinculada")
     except ConfigError as exc:
         lines.append(f"Telegram: ⚠ {exc}")
+
+    # Solo la cantidad y la hora: el texto de los recordatorios no se muestra.
+    # `estado` solo lee: si la base de datos aún no existe, no la crea.
+    pending = []
+    if settings.summary.db_path.exists():
+        store = ReminderStore(settings.summary.db_path, now=lambda: datetime.now(settings.timezone))
+        pending = store.pending()
+    if pending:
+        next_at = pending[0].due_at.astimezone(settings.timezone)
+        lines.append(f"Recordatorios pendientes: {len(pending)} (el próximo: {next_at:%Y-%m-%d %H:%M})")
+    else:
+        lines.append("Recordatorios pendientes: ninguno")
     return lines
 
 

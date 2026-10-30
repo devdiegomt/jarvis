@@ -64,7 +64,8 @@ class IncomingMessage:
 class ButtonAnswer:
     id: str  # identificador del clic (el canal lo usa para acusar recibo)
     sender: str
-    data: str  # dato del botón: "<id de la confirmación>:si" o "<id>:no"
+    data: str  # dato del botón, por ejemplo "<id de la confirmación>:si"
+    handle: Any = None  # mensaje que tenía el botón (para editarlo después)
 
 
 ChatEvent = IncomingMessage | ButtonAnswer
@@ -79,12 +80,12 @@ class ChatChannel(Protocol):
 
     def show_typing(self, to: str) -> None: ...
 
-    def ask_confirmation(self, to: str, prompt: str, buttons: list[tuple[str, str]]) -> Any:
-        """Envía la pregunta con botones y devuelve un identificador para cerrarla después."""
+    def send_with_buttons(self, to: str, text: str, buttons: list[tuple[str, str]]) -> Any:
+        """Envía un mensaje con botones (texto, dato) y devuelve un identificador del mensaje."""
         ...
 
-    def close_confirmation(self, to: str, handle: Any, text: str) -> None:
-        """Reemplaza la pregunta por `text` y quita los botones."""
+    def replace_message(self, to: str, handle: Any, text: str) -> None:
+        """Reemplaza el texto de un mensaje enviado y quita sus botones."""
         ...
 
     def acknowledge(self, answer: ButtonAnswer, text: str = "") -> None: ...
@@ -92,6 +93,10 @@ class ChatChannel(Protocol):
 
 # Crea el agente de un mensaje a partir del historial, el system prompt y el confirmador.
 AgentFactory = Callable[[list, str, Confirmer], Agent]
+
+# Atiende botones que no son de una confirmación (por ejemplo, los de un recordatorio).
+# Devuelve False si el botón no es suyo.
+ButtonHandler = Callable[[ButtonAnswer], bool]
 
 
 class ChatService:
@@ -104,8 +109,10 @@ class ChatService:
         system_prompt: Callable[[], str],
         now: Callable[[], datetime],
         confirmation_timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
+        button_handler: ButtonHandler | None = None,
     ) -> None:
         self._channel = channel
+        self._button_handler = button_handler
         self._store = store
         self._agent_factory = agent_factory
         self._system_prompt = system_prompt
@@ -132,8 +139,7 @@ class ChatService:
         self._purge_if_due()
         try:
             if isinstance(event, ButtonAnswer):
-                # Un botón fuera de una confirmación en curso es de una pregunta vieja.
-                self._channel.acknowledge(event, EXPIRED_TEXT)
+                self._handle_other_button(event)
             else:
                 self._handle_message(event)
         except ChannelError as exc:
@@ -189,7 +195,7 @@ class ChatService:
         def confirm(prompt: str) -> bool:
             confirmation_id = uuid.uuid4().hex[:12]
             buttons = [("✅ Sí", f"{confirmation_id}:si"), ("❌ No", f"{confirmation_id}:no")]
-            handle = self._channel.ask_confirmation(sender, prompt, buttons)
+            handle = self._channel.send_with_buttons(sender, prompt, buttons)
             approved = self._wait_for_answer(confirmation_id)
             mark = {True: APPROVED_MARK, False: REJECTED_MARK, None: TIMEOUT_MARK}[approved]
             self._close_safely(sender, handle, f"{prompt}\n\n{mark}")
@@ -214,7 +220,7 @@ class ChatService:
             if isinstance(event, ButtonAnswer):
                 answer_id, _, value = event.data.partition(":")
                 if answer_id != confirmation_id:
-                    self._channel.acknowledge(event, EXPIRED_TEXT)
+                    self._handle_other_button(event)
                     continue
                 self._channel.acknowledge(event)
                 return value == "si"
@@ -223,6 +229,12 @@ class ChatService:
             if answer is not None:
                 return answer
             self._channel.send_text(event.sender, ASK_AGAIN_TEXT)
+
+    def _handle_other_button(self, answer: ButtonAnswer) -> None:
+        """Botón que no responde a la confirmación en curso: de otra función o de una pregunta vieja."""
+        if self._button_handler is not None and self._button_handler(answer):
+            return
+        self._channel.acknowledge(answer, EXPIRED_TEXT)
 
     def _purge_if_due(self) -> None:
         now = self._now()
@@ -241,7 +253,7 @@ class ChatService:
 
     def _close_safely(self, to: str, handle: Any, text: str) -> None:
         try:
-            self._channel.close_confirmation(to, handle, text)
+            self._channel.replace_message(to, handle, text)
         except ChannelError as exc:
             logger.warning("No se pudo cerrar la pregunta de confirmación: %s", exc)
 
