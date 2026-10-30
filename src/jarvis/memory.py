@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS processed_messages (
     message_id  TEXT PRIMARY KEY,
     received_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS preferences (  -- ajustes del usuario (por ejemplo, /voz); no caducan
+    channel TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    name    TEXT NOT NULL,
+    value   TEXT NOT NULL,
+    PRIMARY KEY (channel, user_id, name)
+);
 """
 
 
@@ -128,6 +135,21 @@ class ConversationStore:
                 (message_id, _utc(self._now())),
             )
         return cursor.rowcount == 1
+
+    def get_preference(self, channel: str, user_id: str, name: str) -> str | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT value FROM preferences WHERE channel = ? AND user_id = ? AND name = ?",
+                (channel, user_id, name),
+            ).fetchone()
+        return row[0] if row else None
+
+    def set_preference(self, channel: str, user_id: str, name: str, value: str) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO preferences (channel, user_id, name, value) VALUES (?, ?, ?, ?)",
+                (channel, user_id, name, value),
+            )
 
     def purge_old(self) -> int:
         """Borra conversaciones e IDs de mensajes más antiguos que la retención."""

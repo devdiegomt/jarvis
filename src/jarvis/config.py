@@ -21,6 +21,9 @@ SUMMARY_CHANNELS = ("gmail", "telegram")
 # Transcripción de notas de voz: "local" (Whisper en el equipo) o "no" (desactivada).
 TRANSCRIPTION_ENGINES = ("local", "no")
 DEFAULT_WHISPER_MODEL = "small"
+# Respuestas con voz: "local" (Piper en el equipo) o "no" (desactivadas).
+SPEECH_ENGINES = ("local", "no")
+DEFAULT_PIPER_VOICE = "es_MX-ald-medium"
 
 
 class ConfigError(Exception):
@@ -72,6 +75,19 @@ class VoiceSettings:
 
 
 @dataclass(frozen=True)
+class SpeechSettings:
+    """Respuestas con voz. `engine` dice quién genera la voz; hoy solo "local" (o "no")."""
+
+    engine: str
+    voice: str  # voz de Piper: <idioma>-<nombre>-<calidad>, por ejemplo es_MX-ald-medium
+    voices_dir: Path  # carpeta donde `preparar-voz` descarga las voces
+
+    @property
+    def enabled(self) -> bool:
+        return self.engine != "no"
+
+
+@dataclass(frozen=True)
 class Settings:
     api_key: str
     model: str
@@ -80,6 +96,7 @@ class Settings:
     google: GoogleSettings
     summary: SummarySettings
     voice: VoiceSettings
+    speech: SpeechSettings
 
 
 def read_env() -> Mapping[str, str]:
@@ -104,6 +121,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         google=load_google_settings(env),
         summary=load_summary_settings(env),
         voice=load_voice_settings(env),
+        speech=load_speech_settings(env),
     )
 
 
@@ -161,6 +179,22 @@ def load_voice_settings(env: Mapping[str, str]) -> VoiceSettings:
             f"JARVIS_WHISPER_MODELO='{model}' no es válido. Ejemplos: tiny, base, small, medium."
         )
     return VoiceSettings(engine=engine, model=model, models_dir=DEFAULT_CONFIG_DIR / "voz")
+
+
+def load_speech_settings(env: Mapping[str, str]) -> SpeechSettings:
+    engine = (_get(env, "JARVIS_RESPUESTA_VOZ") or "local").lower()
+    if engine not in SPEECH_ENGINES:
+        raise ConfigError(
+            f"JARVIS_RESPUESTA_VOZ='{engine}' no es válido. Opciones: {', '.join(SPEECH_ENGINES)}."
+        )
+    voice = _get(env, "JARVIS_PIPER_VOZ") or DEFAULT_PIPER_VOICE
+    # Formato de Piper; también se usa como nombre de archivo.
+    if not re.fullmatch(r"[a-z]{2,3}_[A-Z]{2}-[A-Za-z0-9_]+-[a-z_]+", voice):
+        raise ConfigError(
+            f"JARVIS_PIPER_VOZ='{voice}' no es válido. Usa el formato <idioma>-<nombre>-<calidad>, "
+            f"por ejemplo {DEFAULT_PIPER_VOICE}."
+        )
+    return SpeechSettings(engine=engine, voice=voice, voices_dir=DEFAULT_CONFIG_DIR / "voz" / "piper")
 
 
 def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:

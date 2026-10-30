@@ -20,6 +20,7 @@ import anthropic
 from jarvis.agent import Agent
 from jarvis.confirmation import parse_yes_no
 from jarvis.memory import Conversation, ConversationStore
+from jarvis.speech import Speaker, SpeechError, SpeechUnavailableError
 from jarvis.tools import Confirmer
 from jarvis.voice import MAX_VOICE_SECONDS, TranscriptionError, Transcriber
 
@@ -34,7 +35,7 @@ WELCOME_TEXT = (
 HELP_TEXT = (
     "Pregúntame, por ejemplo: «¿Qué tengo hoy?» o «Recuérdame a las 5 llamar a Laura». "
     "También entiendo notas de voz.\n\n"
-    "/nuevo: empezar una conversación nueva\n/ayuda: ver esta ayuda"
+    "/nuevo: empezar una conversación nueva\n/voz: elegir cuándo te respondo con voz\n/ayuda: ver esta ayuda"
 )
 NEW_CONVERSATION_TEXT = "Listo, empezamos una conversación nueva."
 ONLY_TEXT_TEXT = "Por ahora entiendo mensajes de texto y notas de voz."
@@ -44,6 +45,22 @@ VOICE_DOWNLOAD_ERROR_TEXT = "No pude descargar la nota de voz. Inténtalo de nue
 VOICE_EMPTY_TEXT = "No logré entender nada en la nota de voz. ¿Me lo repites o me lo escribes?"
 HEARD_TEMPLATE = "🎙 Entendí: «{}»"
 VOICE_MARK = "(nota de voz)"
+SPEECH_DISABLED_TEXT = "Las respuestas con voz están desactivadas (JARVIS_RESPUESTA_VOZ=no)."
+
+# Cuándo responder con voz (comando /voz). "espejo": solo si el usuario envió una nota de voz.
+VOICE_PREFERENCE = "respuesta_voz"
+DEFAULT_VOICE_MODE = "espejo"
+# Modo: (botón, cómo se describe ahora, confirmación al elegirlo).
+VOICE_MODES = {
+    "espejo": (
+        "🎙 Si me hablas",
+        "solo cuando me envías una nota de voz",
+        "Listo: te responderé con voz cuando me hables.",
+    ),
+    "siempre": ("🔊 Siempre", "siempre", "Listo: te responderé siempre con voz."),
+    "nunca": ("🔇 Nunca", "nunca", "Listo: te responderé solo por escrito."),
+}
+VOICE_BUTTON_PREFIX = "voz:"
 AI_ERROR_TEXT = "Tuve un problema al consultar la IA. Inténtalo de nuevo en un momento."
 UNEXPECTED_ERROR_TEXT = "Algo salió mal al procesar tu mensaje. Inténtalo de nuevo."
 ASK_AGAIN_TEXT = "Responde con los botones, o escribe (o di en una nota de voz) «sí» o «no»."
@@ -52,7 +69,12 @@ APPROVED_MARK = "✅ Confirmado"
 REJECTED_MARK = "❌ Cancelado"
 TIMEOUT_MARK = "⌛ Sin respuesta: cancelado"
 
-COMMANDS = {"start": "Empezar", "nuevo": "Conversación nueva", "ayuda": "Ver la ayuda"}
+COMMANDS = {
+    "start": "Empezar",
+    "nuevo": "Conversación nueva",
+    "voz": "Elegir cuándo responder con voz",
+    "ayuda": "Ver la ayuda",
+}
 
 logger = logging.getLogger("jarvis.chat")
 # Sin registro configurado (por ejemplo, en `telegram-vincular`), no se imprime nada extra.
@@ -111,6 +133,10 @@ class ChatChannel(Protocol):
         """Descarga el audio de una nota de voz (solo a memoria)."""
         ...
 
+    def send_voice(self, to: str, audio: bytes) -> None:
+        """Envía una nota de voz (OGG/Opus)."""
+        ...
+
 
 # Crea el agente de un mensaje a partir del historial, el system prompt y el confirmador.
 AgentFactory = Callable[[list, str, Confirmer], Agent]
@@ -132,10 +158,13 @@ class ChatService:
         confirmation_timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
         button_handler: ButtonHandler | None = None,
         transcriber: Transcriber | None = None,
+        speaker: Speaker | None = None,
     ) -> None:
         self._channel = channel
         self._button_handler = button_handler
         self._transcriber = transcriber
+        self._speaker = speaker
+        self._speech_warned = False  # el aviso de "voz no disponible" se envía una sola vez
         self._store = store
         self._agent_factory = agent_factory
         self._system_prompt = system_prompt
@@ -192,6 +221,9 @@ class ChatService:
         if command == "/ayuda":
             self._channel.send_text(message.sender, HELP_TEXT)
             return
+        if command == "/voz":
+            self._ask_voice_mode(message.sender)
+            return
 
         self._show_typing(message.sender)
         conversation = self._store.load_active(self._channel.name, message.sender, self._system_prompt)
@@ -199,7 +231,9 @@ class ChatService:
         # La marca de nota de voz avisa al modelo de que el texto puede traer errores de transcripción.
         mark = f"{VOICE_MARK} " if message.voice is not None else ""
         reply = self._ask_agent(conversation, message.sender, f"[{self._now():%Y-%m-%d %H:%M}] {mark}{text}")
-        self._channel.send_text(message.sender, reply)
+        if self._should_speak(message.sender, by_voice=message.voice is not None):
+            self._send_voice_safely(message.sender, reply)
+        self._channel.send_text(message.sender, reply)  # el texto llega siempre, también con voz
         logger.info("Mensaje %s respondido.", message.id)
 
     def _read_text(self, message: IncomingMessage) -> str | None:
@@ -241,6 +275,49 @@ class ChatService:
             return None
         self._channel.send_text(sender, HEARD_TEMPLATE.format(text))
         return text
+
+    def _should_speak(self, sender: str, by_voice: bool) -> bool:
+        if self._speaker is None:
+            return False
+        mode = self._voice_mode(sender)
+        return mode == "siempre" or (mode == "espejo" and by_voice)
+
+    def _voice_mode(self, sender: str) -> str:
+        mode = self._store.get_preference(self._channel.name, sender, VOICE_PREFERENCE)
+        return mode if mode in VOICE_MODES else DEFAULT_VOICE_MODE
+
+    def _send_voice_safely(self, to: str, text: str) -> None:
+        """La voz es un extra: si falla, la respuesta llega igual por escrito."""
+        assert self._speaker is not None
+        self._show_typing(to)
+        try:
+            self._channel.send_voice(to, self._speaker.speak(text))
+        except SpeechUnavailableError as exc:
+            logger.warning("Respuesta sin voz: %s", exc)
+            if not self._speech_warned:
+                self._speech_warned = True
+                self._channel.send_text(to, str(exc))
+        except (SpeechError, ChannelError) as exc:
+            logger.warning("No se pudo enviar la respuesta con voz: %s", exc)
+
+    def _ask_voice_mode(self, sender: str) -> None:
+        if self._speaker is None:
+            self._channel.send_text(sender, SPEECH_DISABLED_TEXT)
+            return
+        current = VOICE_MODES[self._voice_mode(sender)][1]
+        buttons = [(label, f"{VOICE_BUTTON_PREFIX}{mode}") for mode, (label, *_) in VOICE_MODES.items()]
+        self._channel.send_with_buttons(
+            sender, f"¿Cuándo quieres que te responda con voz? Ahora: {current}.", buttons
+        )
+
+    def _handle_voice_button(self, answer: ButtonAnswer) -> None:
+        mode = answer.data.removeprefix(VOICE_BUTTON_PREFIX)
+        if mode not in VOICE_MODES:
+            self._channel.acknowledge(answer, EXPIRED_TEXT)
+            return
+        self._store.set_preference(self._channel.name, answer.sender, VOICE_PREFERENCE, mode)
+        self._channel.acknowledge(answer)
+        self._close_safely(answer.sender, answer.handle, VOICE_MODES[mode][2])
 
     def _ask_agent(self, conversation: Conversation, sender: str, text: str) -> str:
         agent = self._agent_factory(conversation.messages, conversation.system_prompt, self._confirmer_for(sender))
@@ -297,6 +374,9 @@ class ChatService:
 
     def _handle_other_button(self, answer: ButtonAnswer) -> None:
         """Botón que no responde a la confirmación en curso: de otra función o de una pregunta vieja."""
+        if answer.data.startswith(VOICE_BUTTON_PREFIX):
+            self._handle_voice_button(answer)
+            return
         if self._button_handler is not None and self._button_handler(answer):
             return
         self._channel.acknowledge(answer, EXPIRED_TEXT)

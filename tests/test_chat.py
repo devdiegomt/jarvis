@@ -20,6 +20,7 @@ from jarvis.chat import (
     TIMEOUT_MARK,
     WELCOME_TEXT,
     HEARD_TEMPLATE,
+    SPEECH_DISABLED_TEXT,
     VOICE_DISABLED_TEXT,
     VOICE_DOWNLOAD_ERROR_TEXT,
     VOICE_EMPTY_TEXT,
@@ -33,6 +34,7 @@ from jarvis.chat import (
 )
 from jarvis.memory import ConversationStore
 from jarvis.tools import Confirmer, Tool, ToolRegistry
+from jarvis.speech import SpeechError, SpeechUnavailableError
 from jarvis.voice import TranscriptionError
 
 OWNER = "123456789"
@@ -52,6 +54,8 @@ class FakeChannel:
         self.fail_typing = fail_typing
         self.downloads: list[VoiceNote] = []
         self.fail_download = False
+        self.voices: list[bytes] = []
+        self.fail_voice = False
         self.on_ask: Callable[[], None] | None = None  # simula lo que hace el usuario al ver la pregunta
 
     def send_text(self, to: str, text: str) -> None:
@@ -79,6 +83,11 @@ class FakeChannel:
             raise ChannelError("sin red")
         self.downloads.append(note)
         return f"audio:{note.ref}".encode()
+
+    def send_voice(self, to: str, audio: bytes) -> None:
+        if self.fail_voice:
+            raise ChannelError("sin red")
+        self.voices.append(audio)
 
     def button(self, value: str, question: int = -1) -> str:
         """Dato del botón Sí ("si") o No ("no") de una pregunta enviada."""
@@ -424,3 +433,117 @@ def test_confirmation_answered_with_a_voice_note(tmp_path: Path) -> None:
 
     assert setup.actions == ["avisar a Ana"]
     assert HEARD_TEMPLATE.format("¡Sí!") in setup.channel.sent
+
+
+# --- Respuestas con voz -----------------------------------------------------
+
+
+class FakeSpeaker:
+    name = "prueba"
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.texts: list[str] = []
+
+    def speak(self, text: str) -> bytes:
+        self.texts.append(text)
+        if self.error:
+            raise self.error
+        return f"voz:{text}".encode()
+
+
+def voice_setup(tmp_path: Path, replies: int = 1, **kwargs: Any) -> Setup:
+    kwargs.setdefault("speaker", FakeSpeaker())
+    responses = [text_response(f"Respuesta {i}.") for i in range(replies)]
+    return Setup(tmp_path, responses, transcriber=FakeTranscriber({"v1": "Hola"}), **kwargs)
+
+
+def test_voice_note_gets_a_voice_reply_and_the_text(tmp_path: Path) -> None:
+    setup = voice_setup(tmp_path)
+
+    setup.voice("v1")
+    setup.process()
+
+    assert setup.channel.voices == [b"voz:Respuesta 0."]
+    assert setup.channel.sent[-1] == "Respuesta 0."
+
+
+def test_text_message_gets_only_text_by_default(tmp_path: Path) -> None:
+    setup = voice_setup(tmp_path)
+
+    setup.message("Hola")
+    setup.process()
+
+    assert setup.channel.voices == []
+    assert setup.channel.sent == ["Respuesta 0."]
+
+
+def test_voice_command_offers_the_modes(tmp_path: Path) -> None:
+    setup = voice_setup(tmp_path)
+
+    setup.message("/voz")
+    setup.process()
+
+    prompt, buttons = setup.channel.questions[0]
+    assert "Ahora: solo cuando me envías una nota de voz" in prompt
+    assert [data for _, data in buttons] == ["voz:espejo", "voz:siempre", "voz:nunca"]
+
+
+@pytest.mark.parametrize(("mode", "voice_for_text", "voice_for_voice"), [("siempre", True, True), ("nunca", False, False)])
+def test_voice_mode_is_saved_and_applied(tmp_path: Path, mode: str, voice_for_text: bool, voice_for_voice: bool) -> None:
+    setup = voice_setup(tmp_path, replies=2)
+
+    setup.click(f"voz:{mode}")
+    setup.process()
+    setup.message("Hola")
+    setup.process()
+    spoken_after_text = len(setup.channel.voices)
+    setup.voice("v1")
+    setup.process()
+
+    assert setup.store.get_preference("prueba", OWNER, "respuesta_voz") == mode
+    assert setup.channel.closed[0][1].startswith("Listo: te responderé")
+    assert (spoken_after_text == 1) is voice_for_text
+    assert (len(setup.channel.voices) > spoken_after_text) is voice_for_voice
+
+
+def test_unknown_voice_mode_button_is_expired(tmp_path: Path) -> None:
+    setup = voice_setup(tmp_path)
+
+    setup.click("voz:gritando")
+    setup.process()
+
+    assert setup.channel.acks == [("c1", EXPIRED_TEXT)]
+
+
+def test_voice_command_when_speech_is_disabled(tmp_path: Path) -> None:
+    setup = voice_setup(tmp_path, speaker=None)
+
+    setup.message("/voz")
+    setup.process()
+
+    assert setup.channel.sent == [SPEECH_DISABLED_TEXT]
+
+
+@pytest.mark.parametrize("problem", ["speech", "channel"])
+def test_voice_failures_still_send_the_text(tmp_path: Path, problem: str) -> None:
+    setup = voice_setup(tmp_path, speaker=FakeSpeaker(SpeechError("falló")) if problem == "speech" else FakeSpeaker())
+    setup.channel.fail_voice = problem == "channel"
+
+    setup.voice("v1")
+    setup.process()
+
+    assert setup.channel.sent[-1] == "Respuesta 0."
+    assert "falló" not in setup.channel.sent
+
+
+def test_missing_voice_is_explained_only_once(tmp_path: Path) -> None:
+    setup = voice_setup(tmp_path, replies=2, speaker=FakeSpeaker(SpeechUnavailableError("Falta la voz.")))
+
+    setup.voice("v1")
+    setup.process()
+    setup.voice("v1")
+    setup.process()
+
+    assert setup.channel.sent.count("Falta la voz.") == 1
+    assert setup.channel.sent[-1] == "Respuesta 1."

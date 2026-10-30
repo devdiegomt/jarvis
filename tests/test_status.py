@@ -98,3 +98,9 @@ def test_voice_status_is_shown(isolated_config_dir: Path) -> None:
     text = report({**FULL_ENV, "JARVIS_TRANSCRIPCION": "no"}, None)
 
     assert "Notas de voz: desactivadas" in text
+
+
+def test_speech_status_is_shown(isolated_config_dir: Path) -> None:
+    text = report({**FULL_ENV, "JARVIS_RESPUESTA_VOZ": "no"}, None)
+
+    assert "Respuestas con voz: desactivadas" in text

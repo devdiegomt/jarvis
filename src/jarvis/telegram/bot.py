@@ -44,6 +44,9 @@ class TelegramChannel:
     def download_voice(self, note: VoiceNote) -> bytes:
         return self._client.download_file(note.ref)
 
+    def send_voice(self, to: str, audio: bytes) -> None:
+        self._client.send_voice(to, audio)
+
 
 def parse_update(update: dict[str, Any], owner_id: str) -> ChatEvent | None:
     """Convierte una actualización de Telegram en un evento del chat.

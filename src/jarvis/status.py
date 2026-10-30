@@ -16,6 +16,7 @@ from jarvis.config import (
 from jarvis.logs import tail
 from jarvis.reminders import ReminderStore
 from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskInfo, describe_result
+from jarvis.speech import describe_speech
 from jarvis.voice import describe_voice
 
 LOG_LINES = 5
@@ -82,6 +83,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     except ConfigError as exc:
         lines.append(f"Telegram: ⚠ {exc}")
     lines.append(f"Notas de voz: {describe_voice(settings.voice)}")
+    lines.append(f"Respuestas con voz: {describe_speech(settings.speech)}")
 
     # Solo la cantidad y la hora: el texto de los recordatorios no se muestra.
     # `estado` solo lee: si la base de datos aún no existe, no la crea.

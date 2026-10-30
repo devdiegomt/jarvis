@@ -8,9 +8,10 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.8**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en segundo
-plano) escribiéndole o con notas de voz, te crea recordatorios y te envía un resumen del día de lunes
-a viernes (por Telegram o Gmail). El envío de mensajes a terceros sigue simulado.
+**v0.8.1**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
+segundo plano) escribiéndole o con notas de voz, y te responde también con voz; te crea
+recordatorios y te envía un resumen del día de lunes a viernes (por Telegram o Gmail). El envío de
+mensajes a terceros sigue simulado.
 Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
 
 ## Requisitos
@@ -27,6 +28,12 @@ Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
 uv sync
 cp .env.example .env   # y completa ANTHROPIC_API_KEY
 ```
+
+> **Windows: "Una directiva de Control de aplicaciones bloqueó este archivo".** El Control
+> inteligente de aplicaciones de Windows puede bloquear el lanzador `jarvis.exe` que crea `uv sync`
+> (no está firmado). Usa el mismo comando a través de Python, que sí está firmado:
+> `uv run python -m jarvis <comando>` (por ejemplo, `uv run python -m jarvis estado`). Las tareas
+> programadas ya arrancan así. No hace falta desactivar esa protección.
 
 ## Uso
 
@@ -217,8 +224,9 @@ se puede deshacer. `uv run jarvis estado` muestra cuántos hay pendientes y la h
 ## Notas de voz
 
 Mándale a tu bot una nota de voz como harías con una persona. JARVIS la transcribe en tu PC, te
-muestra lo que entendió (*🎙 Entendí: «recuérdame a las 5 llamar a Laura»*) y responde. También
-puedes contestar "sí" o "no" con una nota de voz cuando te pide una confirmación.
+muestra lo que entendió (*🎙 Entendí: «recuérdame a las 5 llamar a Laura»*) y te responde con una
+nota de voz y por escrito. También puedes contestar "sí" o "no" con una nota de voz cuando te pide
+una confirmación.
 
 ### Activarlas (una sola vez)
 
@@ -227,13 +235,28 @@ uv sync
 uv run jarvis preparar-voz
 ```
 
-- `uv sync` instala la transcripción local ([faster-whisper](https://github.com/SYSTRAN/faster-whisper)).
-- `preparar-voz` descarga el modelo de voz a `~/.config/jarvis/voz/`. El modelo `small` (por defecto)
-  pesa unos 500 MB; se descarga una sola vez.
+- `uv sync` instala la transcripción ([faster-whisper](https://github.com/SYSTRAN/faster-whisper)) y
+  la voz ([Piper](https://github.com/OHF-Voice/piper1-gpl)), las dos locales.
+- `preparar-voz` descarga, una sola vez, el modelo de Whisper (`small`, unos 500 MB) y la voz de
+  Piper (unos 60 MB) a `~/.config/jarvis/voz/`.
 
 Si JARVIS ya corría en segundo plano, reinícialo para que use la versión nueva:
 `uv run jarvis quitar-telegram` y luego `uv run jarvis programar-telegram`.
-`uv run jarvis estado` muestra si las notas de voz están activas.
+`uv run jarvis estado` muestra si las notas de voz y las respuestas con voz están activas.
+
+### Respuestas con voz
+
+Por defecto JARVIS responde **en espejo**: con voz (y el texto debajo) cuando le hablas, y solo por
+escrito cuando le escribes. Con **/voz** eliges entre *Si me hablas*, *Siempre* o *Nunca*; tu
+elección se guarda.
+
+- La voz se genera en tu PC con Piper: el texto de las respuestas no sale del equipo.
+- Se leen hasta unos 1000 caracteres (sin enlaces ni emojis); el texto completo llega siempre por
+  escrito. Si la voz falla, la respuesta llega igual por escrito.
+- Para cambiar de voz, escucha las muestras en <https://rhasspy.github.io/piper-samples/>, pon su
+  nombre en `.env` (por ejemplo `JARVIS_PIPER_VOZ=es_AR-daniela-high`) y vuelve a ejecutar
+  `preparar-voz`.
+- Para desactivarlas: `JARVIS_RESPUESTA_VOZ=no`.
 
 ### Privacidad y límites
 
@@ -244,7 +267,7 @@ Si JARVIS ya corría en segundo plano, reinícialo para que use la versión nuev
 - Si las transcripciones fallan a menudo, prueba un modelo mayor en `.env`
   (`JARVIS_WHISPER_MODELO=medium` o `large-v3-turbo`, más precisos y más lentos) o uno menor si van
   lentas (`base`). Después de cambiarlo, vuelve a ejecutar `preparar-voz`.
-- Para desactivarlas: `JARVIS_TRANSCRIPCION=no`.
+- Para desactivar las notas de voz: `JARVIS_TRANSCRIPCION=no`.
 - Si `preparar-voz` falla con un error de certificados, es el mismo caso del antivirus que se
   explica en la sección de Telegram (la descarga es desde `huggingface.co`).
 
@@ -321,7 +344,7 @@ Cada ejecución queda registrada (solo el resultado, nunca el contenido) en
 uv run jarvis estado
 ```
 
-Resume la configuración (calendario, canal del resumen, Telegram, notas de voz), si las tareas programadas están
+Resume la configuración (calendario, canal del resumen, Telegram, voz), si las tareas programadas están
 activas y las últimas líneas de los registros. Los registros solo contienen resultados, nunca el
 texto de tus mensajes.
 
@@ -344,6 +367,8 @@ texto de tus mensajes.
 | `TELEGRAM_OWNER_ID` | Tu ID de Telegram, el único que JARVIS atiende (`telegram-vincular`) | |
 | `JARVIS_TRANSCRIPCION` | Notas de voz: `local` (Whisper en el PC) o `no` (desactivadas) | `local` |
 | `JARVIS_WHISPER_MODELO` | Modelo de Whisper: `tiny`, `base`, `small`, `medium`, `large-v3-turbo`… | `small` |
+| `JARVIS_RESPUESTA_VOZ` | Respuestas con voz: `local` (Piper en el PC) o `no` (desactivadas) | `local` |
+| `JARVIS_PIPER_VOZ` | Voz de Piper (`<idioma>-<nombre>-<calidad>`) | `es_MX-ald-medium` |
 
 ## Tests
 
@@ -351,8 +376,8 @@ texto de tus mensajes.
 uv run pytest
 ```
 
-Los tests no llaman a ninguna API real (Anthropic, Google, Telegram, Whisper y el Programador de
-tareas están simulados) y no necesitan el grupo de voz (`uv sync --no-group voz`). GitHub Actions los ejecuta en cada pull request y en cada push a `main`.
+Los tests no llaman a ninguna API real (Anthropic, Google, Telegram, Whisper, Piper y el Programador
+de tareas están simulados) y no necesitan el grupo de voz (`uv sync --no-group voz`). GitHub Actions los ejecuta en cada pull request y en cada push a `main`.
 
 ## Documentación
 
