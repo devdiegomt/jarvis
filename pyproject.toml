@@ -30,11 +30,12 @@ testpaths = ["tests"]
 dev = [
     "pytest>=9.2.0",
 ]
-# Notas de voz: transcripción local con Whisper. Pesada, así que es un grupo aparte: `uv sync`
-# lo instala por defecto y la CI lo omite (`--no-group voz`); sin él, JARVIS funciona sin voz.
+# Voz: transcripción local con Whisper y respuestas con Piper. Pesada, así que es un grupo aparte:
+# `uv sync` lo instala por defecto y la CI lo omite (`--no-group voz`); sin él, JARVIS funciona sin voz.
 voz = [
     "faster-whisper>=1.2.0",
     "av<19",  # faster-whisper 1.2 usa una opción de av.open que la v19 retiró
+    "piper-tts>=1.3.0",
 ]
 
 [tool.uv]

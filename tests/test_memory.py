@@ -122,3 +122,13 @@ def test_purge_removes_old_data(store: ConversationStore, clock: Clock) -> None:
     assert store.purge_old() == 1
     assert store.mark_processed("telegram:viejo")  # su registro también se borró
     assert store.load_active("telegram", "otro", lambda: "p").id == recent.id
+
+
+def test_preferences_are_saved_per_user(store: ConversationStore) -> None:
+    assert store.get_preference("telegram", "987654321", "respuesta_voz") is None
+
+    store.set_preference("telegram", "987654321", "respuesta_voz", "siempre")
+    store.set_preference("telegram", "987654321", "respuesta_voz", "nunca")
+
+    assert store.get_preference("telegram", "987654321", "respuesta_voz") == "nunca"
+    assert store.get_preference("telegram", "otro", "respuesta_voz") is None

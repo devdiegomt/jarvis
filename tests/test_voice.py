@@ -214,7 +214,8 @@ def test_download_errors_are_explained(tmp_path: Path, fake_faster_whisper: type
 
 
 def prepare(monkeypatch: pytest.MonkeyPatch, env: dict[str, str], installed: bool = True) -> None:
-    monkeypatch.setattr(cli, "read_env", lambda: env)
+    # Solo la transcripción: la voz de Piper se prueba en test_speech.py.
+    monkeypatch.setattr(cli, "read_env", lambda: {"JARVIS_RESPUESTA_VOZ": "no", **env})
     monkeypatch.setattr("jarvis.voice.whisper_installed", lambda: installed)
     cli.main(["preparar-voz"])
 
@@ -228,7 +229,7 @@ def test_prepare_voice_downloads_the_model(
     prepare(monkeypatch, {"JARVIS_WHISPER_MODELO": "tiny"})
 
     assert fake_faster_whisper.downloads == [("tiny", str(isolated_config_dir / "voz" / "tiny"))]
-    assert "Listo: modelo guardado" in capsys.readouterr().out
+    assert "Modelo guardado" in capsys.readouterr().out
 
 
 def test_prepare_voice_skips_a_model_already_downloaded(
@@ -253,6 +254,6 @@ def test_prepare_voice_without_the_voice_group(monkeypatch: pytest.MonkeyPatch, 
 
 
 def test_prepare_voice_when_disabled(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    prepare(monkeypatch, {"JARVIS_TRANSCRIPCION": "no"})
+    prepare(monkeypatch, {"JARVIS_TRANSCRIPCION": "no", "JARVIS_RESPUESTA_VOZ": "no"})
 
     assert "desactivadas" in capsys.readouterr().out

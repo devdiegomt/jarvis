@@ -389,3 +389,37 @@ def test_file_download_uses_the_trust_store_and_enforces_the_size(monkeypatch: p
     with pytest.raises(TelegramError, match="demasiado grande"):
         client_module.http_download("https://api.telegram.org/file/botX/a.oga", 5, 100)
     assert isinstance(contexts[0], truststore.SSLContext)
+
+
+def test_send_voice_uploads_the_audio() -> None:
+    uploads: list[tuple[str, dict[str, str], tuple[str, str, str, bytes]]] = []
+
+    def upload(url: str, fields: dict[str, str], file: tuple[str, str, str, bytes], _timeout: float) -> dict[str, Any]:
+        uploads.append((url, fields, file))
+        return {"ok": True, "result": {"message_id": 3}}
+
+    TelegramChannel(TelegramClient(TOKEN, call=FakeApi(), upload=upload)).send_voice(OWNER, b"OggS")
+
+    assert uploads == [
+        (f"https://api.telegram.org/bot{TOKEN}/sendVoice", {"chat_id": OWNER}, ("voice", "respuesta.ogg", "audio/ogg", b"OggS"))
+    ]
+
+
+def test_upload_is_multipart_and_its_errors_never_expose_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    requests: list[Any] = []
+    body = json.dumps({"ok": False, "error_code": 400, "description": "Bad Request: wrong file"}).encode()
+
+    def rejected(request: Any, timeout: float, context: Any) -> Any:
+        requests.append(request)
+        raise urllib.error.HTTPError(request.full_url, 400, "x", {}, io.BytesIO(body))  # type: ignore[arg-type]
+
+    monkeypatch.setattr(client_module.urllib.request, "urlopen", rejected)
+
+    with pytest.raises(TelegramError) as excinfo:
+        TelegramClient(TOKEN).send_voice(OWNER, b"OggS-datos")
+
+    assert TOKEN not in str(excinfo.value)
+    sent = requests[0]
+    assert sent.get_header("Content-type").startswith("multipart/form-data; boundary=")
+    assert b'name="chat_id"\r\n\r\n987654321' in sent.data
+    assert b'name="voice"; filename="respuesta.ogg"\r\nContent-Type: audio/ogg\r\n\r\nOggS-datos' in sent.data

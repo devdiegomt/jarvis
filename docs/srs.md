@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.5 (cubre hasta la v0.8)
+- **Versión del documento:** 1.6 (cubre hasta la v0.8.1)
 - **Fecha:** 2026-10-30
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -140,6 +140,17 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   (`JARVIS_WHISPER_MODELO`); `JARVIS_TRANSCRIPCION=no` desactiva las notas de voz.
 - **RF-36.** `jarvis estado` y el arranque del bot indican si las notas de voz están activas.
 
+### v0.8.1: respuestas con voz
+
+- **RF-37.** Por defecto, JARVIS responde con una nota de voz (y el texto) cuando el usuario le
+  habla con una nota de voz, y solo por escrito cuando le escribe.
+- **RF-38.** Con `/voz` el usuario elige cuándo responder con voz: si le habla, siempre o nunca. La
+  elección se guarda y sobrevive a reinicios.
+- **RF-39.** La respuesta escrita llega siempre; si la voz falla, la respuesta llega igual por escrito
+  y, si falta instalar o descargar la voz, se explica una vez cómo hacerlo.
+- **RF-40.** `jarvis preparar-voz` descarga también la voz configurada (`JARVIS_PIPER_VOZ`);
+  `JARVIS_RESPUESTA_VOZ=no` desactiva las respuestas con voz. `estado` indica si están activas.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -165,6 +176,8 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   y los registros solo contienen sus IDs.
 - **RNF-08c.** El audio de las notas de voz se procesa en memoria en el PC y nunca se guarda en disco
   ni se envía a terceros; los registros solo contienen su duración y el tiempo de transcripción.
+- **RNF-08d.** Las respuestas con voz se generan en el PC, en memoria: su texto no se envía a ningún
+  servicio de voz externo.
 
 ### 4.3 Fiabilidad
 
@@ -199,7 +212,7 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - Leer los chats personales del usuario (WhatsApp, Telegram) o escribir desde su cuenta.
 - Enviar mensajes reales a terceros: `enviar_mensaje` sigue simulada.
 - Crear, modificar o borrar eventos del calendario.
-- Respuestas con voz (prevista en la v0.8.1), imágenes o archivos en el chat.
+- Imágenes o archivos en el chat; voces en la nube (por ejemplo, ElevenLabs).
 - WhatsApp como canal (retirado en la v0.5; ver ADR 004 y ADR 005).
 - Varios usuarios, servidor en la nube, Alexa y llamadas telefónicas (ver roadmap).
 
@@ -214,4 +227,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-23 a RF-26 | `scheduler.py`, `telegram/app.py`, `status.py`, `logs.py`, `summary_cli.py` | `test_scheduler.py`, `test_status.py`, `test_logs.py`, `test_telegram.py`, `test_summary_cli.py` |
 | RF-27 a RF-31 | `reminders.py`, `reminder_delivery.py`, `tools/recordatorios.py`, `chat.py` | `test_reminders.py`, `test_chat.py`, `test_status.py` |
 | RF-32 a RF-36 | `voice.py`, `chat.py`, `telegram/`, `confirmation.py`, `cli.py`, `status.py` | `test_voice.py`, `test_chat.py`, `test_telegram.py`, `test_confirmation.py`, `test_status.py` |
+| RF-37 a RF-40 | `speech.py`, `chat.py`, `memory.py`, `telegram/client.py`, `cli.py`, `status.py` | `test_speech.py`, `test_chat.py`, `test_memory.py`, `test_telegram.py`, `test_status.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |
