@@ -40,13 +40,14 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.confirmation import CONFIRMATION_QUESTION, parse_yes_no
-from jarvis.assistant import build_mail_reader
+from jarvis.assistant import build_mail_reader, build_weather
 from jarvis.long_term_memory import MemoryStore
 from jarvis.mail_watch import WatchList
 from jarvis.prompts import build_system_prompt
 from jarvis.reminders import ReminderStore
 from jarvis.tasks import TaskStore
 from jarvis.tools import build_registry
+from jarvis.usage import UsageLog
 
 EXIT_COMMAND = "salir"
 
@@ -65,7 +66,7 @@ def ask_confirmation(prompt: str, read: Callable[[str], str] = input) -> bool:
         print("Responde 's' o 'n'.")
 
 
-def build_agent() -> tuple[Agent, CalendarSource]:
+def build_agent() -> tuple[Agent, CalendarSource, UsageLog]:
     settings = load_settings()
     calendar = build_calendar(settings)
     client = anthropic.Anthropic(api_key=settings.api_key)
@@ -81,6 +82,7 @@ def build_agent() -> tuple[Agent, CalendarSource]:
         MemoryStore(db_path, now=now),
     )
     mail = build_mail_reader(settings)
+    weather = build_weather(settings)
     agent = Agent(
         client=client,
         registry=build_registry(
@@ -93,17 +95,27 @@ def build_agent() -> tuple[Agent, CalendarSource]:
             web=settings.web,
             watched=WatchList(db_path),
             mail=mail,
+            weather=weather,
         ),
         model=settings.model,
-        system_prompt=build_system_prompt(now().date(), memories.all(), settings.web, mail=mail is not None),
+        system_prompt=build_system_prompt(
+            now().date(), memories.all(), settings.web, mail=mail is not None, weather=weather is not None
+        ),
         effort=settings.effort,
     )
-    return agent, calendar
+    return agent, calendar, UsageLog(db_path, now=now)
+
+
+def _record_console_usage(usage_log: UsageLog, agent: Agent) -> None:
+    """Anota el consumo de la respuesta (solo números), como en Telegram."""
+    usage = agent.last_usage
+    if usage.total_input or usage.output_tokens:
+        usage_log.record("consola", agent.model, usage)
 
 
 def run_chat() -> None:
     try:
-        agent, calendar = build_agent()
+        agent, calendar, usage_log = build_agent()
     except ConfigError as exc:
         print(f"Error de configuración: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -135,6 +147,7 @@ def run_chat() -> None:
             print(f"JARVIS: la API devolvió un error ({exc.status_code}). Inténtalo de nuevo.\n")
             continue
         print(f"JARVIS: {reply}\n")
+        _record_console_usage(usage_log, agent)
 
     print("Hasta luego.")
 

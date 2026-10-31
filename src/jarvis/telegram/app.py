@@ -28,6 +28,7 @@ from jarvis.config import (
 from jarvis.logs import FILE_ONLY, setup_logger
 from jarvis.proactive import NoticeLog, ProactiveNotifier, describe_proactive
 from jarvis.prompts import build_chat_system_prompt
+from jarvis.quick import build_quick_commands
 from jarvis.reminder_delivery import ReminderDelivery
 from jarvis.speech import describe_speech
 from jarvis.telegram.bot import (
@@ -76,15 +77,29 @@ def run_telegram(scheduled: bool = False) -> None:
         agent_factory=assistant.agent_factory,
         # Se llama solo al empezar una conversación: la memoria entra al día en cada conversación nueva.
         system_prompt=lambda: build_chat_system_prompt(
-            now().date(), memories.all(), settings.web, mail=assistant.mail is not None
+            now().date(),
+            memories.all(),
+            settings.web,
+            mail=assistant.mail is not None,
+            weather=assistant.weather is not None,
         ),
         now=now,
         button_handler=delivery.handle_button,
         transcriber=assistant.transcriber,
         speaker=assistant.speaker,
         memories=memories,
-        purges=[assistant.tasks.purge_old],
+        purges=[assistant.tasks.purge_old, assistant.usage.purge_old],
         watched=assistant.watched,
+        usage_log=assistant.usage,
+        quick_commands=build_quick_commands(
+            calendar=calendar,
+            tasks=assistant.tasks,
+            reminders=assistant.reminders,
+            weather=assistant.weather,
+            usage=assistant.usage,
+            now=now,
+            timezone=settings.timezone,
+        ),
     )
     poller = TelegramPoller(
         client, telegram.owner_id, deliver=chat.submit, mark_processed=assistant.conversations.mark_processed
@@ -103,6 +118,7 @@ def run_telegram(scheduled: bool = False) -> None:
         mail=assistant.mail,
         watched=assistant.watched,
         mail_interval=timedelta(minutes=settings.mail.check_minutes),
+        weather=assistant.weather,
     )
     if notifier.enabled:
         threading.Thread(target=notifier.run_forever, name="jarvis-avisos", daemon=True).start()

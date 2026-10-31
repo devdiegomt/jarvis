@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.5 (cubre hasta la v0.14.1)
+- **Versión del documento:** 2.6 (cubre hasta la v0.15)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -234,6 +234,18 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-69.** Sin el permiso de lectura de Gmail, JARVIS sigue funcionando, pausa los avisos de correo
   y `estado` explica cómo darlo.
 
+### v0.15: gastar menos y medir el gasto
+
+- **RF-70.** Cada respuesta de Claude (chat, voz, consola y comentario del resumen) registra sus tokens
+  de entrada, de caché y de salida, y sus búsquedas; `/gasto` y `estado` muestran el costo estimado de
+  hoy, los últimos 7 días y el mes, y el registro, el de cada respuesta.
+- **RF-71.** El clima de la ciudad configurada (`JARVIS_CIUDAD`, `JARVIS_PAIS`) se consulta en Open-Meteo
+  con la tool `get_clima` (ahora y hasta 7 días); el modelo la prefiere a la búsqueda en internet.
+- **RF-72.** El resumen de la mañana y el vistazo a mañana incluyen una línea de clima, armada en código;
+  sin clima disponible, se envían sin ella.
+- **RF-73.** `/hoy`, `/pendientes`, `/recordatorios`, `/clima` y `/gasto` se responden en código, sin
+  consultar a Claude, y aparecen en el menú de Telegram y en `/ayuda`.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -279,6 +291,12 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 
 ### 4.3 Fiabilidad y rapidez
 
+- **RNF-09f.** Las llamadas a Claude usan la caché de prompts (prefijo automático, 5 minutos): tools,
+  system prompt e historial se leen de la caché sin editar el historial. Lo que se puede resolver en
+  código (avisos, comandos directos, clima) no usa IA.
+- **RNF-09g.** El registro de consumo guarda solo números (tokens, búsquedas, modelo y canal), nunca
+  contenido, y se borra a los 400 días. A Open-Meteo solo se envían la ciudad y sus coordenadas; el
+  pronóstico se guarda en memoria como mucho 30 minutos.
 - **RNF-09e.** Las conexiones HTTPS con Telegram se mantienen abiertas y se reutilizan (una por hilo),
   para no repetir el saludo TCP + TLS en cada llamada; si Telegram cerró una conexión inactiva, se
   reintenta una sola vez con una nueva, y nunca tras un tiempo agotado (no se duplican mensajes). El
@@ -348,4 +366,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-57 a RF-60 | `tools/calendario.py`, `agenda/`, `google_auth.py`, `tools/registry.py`, `status.py`, `cli.py` | `test_calendar_writing.py` |
 | RF-61 a RF-64 | `proactive.py`, `agenda/google.py`, `config.py`, `telegram/app.py`, `status.py` | `test_proactive.py` |
 | RF-65 a RF-69 | `mail_watch.py`, `gmail_reader.py`, `tools/correo.py`, `proactive.py`, `chat.py`, `prompts.py`, `google_auth.py`, `status.py` | `test_mail.py` |
+| RF-70 a RF-73 | `usage.py`, `agent.py`, `weather.py`, `tools/clima.py`, `quick.py`, `chat.py`, `summary.py`, `proactive.py`, `status.py` | `test_usage.py`, `test_weather.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

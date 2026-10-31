@@ -18,16 +18,13 @@ from jarvis.agenda import (
     meeting_to_line,
 )
 from jarvis.notify import NotificationError, NotificationNotAuthorizedError, Notifier
+from jarvis.dates import format_spanish_date
 from jarvis.storage import SummaryLog
 from jarvis.tasks import Task, TaskStore
+from jarvis.usage import Usage, UsageLog, usage_from_response
 
 HIGHLIGHTS_MAX_TOKENS = 4000
 
-_WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
-_MONTHS = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-]
 
 HIGHLIGHTS_PROMPT = """\
 Eres JARVIS, el asistente personal del usuario. Escribe el comentario inicial de su resumen \
@@ -51,21 +48,17 @@ class DailySummary:
     ai_generated: bool
 
 
-def format_spanish_date(day: date) -> str:
-    """Por ejemplo: `jueves 29 de octubre`."""
-    return f"{_WEEKDAYS[day.weekday()]} {day.day} de {_MONTHS[day.month - 1]}"
-
-
 def build_summary(
     day: date,
     meetings: list[Meeting],
     highlights: str | None,
     source_name: str,
     tasks: Sequence[Task] = (),
+    weather: str | None = None,
 ) -> DailySummary:
     """Arma el correo. La agenda se genera en código para que las horas sean siempre exactas.
 
-    `tasks` son los pendientes que vencen ese día o están atrasados.
+    `tasks` son los pendientes que vencen ese día o están atrasados; `weather`, la línea del clima.
     """
     count = len(meetings)
     if count == 0:
@@ -86,8 +79,10 @@ def build_summary(
     if tasks:
         pending = "\n\nPendientes para hoy:\n" + "\n".join(f"- {task_to_line(t, day)}" for t in tasks)
 
+    weather_note = f"Clima: {weather}\n\n" if weather else ""
     body = (
         f"Buenos días. Este es tu resumen del {format_spanish_date(day)}.\n\n"
+        f"{weather_note}"
         f"{note}{agenda}{pending}\n\n"
         f"--\nJARVIS · Calendario: {source_name}"
     )
@@ -106,8 +101,12 @@ def write_highlights(
     day: date,
     meetings: list[Meeting],
     tasks: Sequence[Task] = (),
+    record: Callable[[Usage], None] | None = None,
 ) -> str | None:
-    """Pide a Claude el comentario del día. Devuelve None si no se pudo generar."""
+    """Pide a Claude el comentario del día. Devuelve None si no se pudo generar.
+
+    `record` recibe los tokens usados (para medir el gasto).
+    """
     payload = {
         "fecha": day.isoformat(),
         "dia": format_spanish_date(day),
@@ -123,6 +122,8 @@ def write_highlights(
         )
     except anthropic.APIError:
         return None
+    if record is not None:
+        record(usage_from_response(response))
     if response.stop_reason != "end_turn":
         return None  # rechazo o respuesta cortada: mejor el resumen simple
     text = "\n".join(block.text for block in response.content if block.type == "text").strip()
@@ -140,6 +141,8 @@ def send_daily_summary(
     now: Callable[[], datetime],
     force: bool = False,
     tasks: TaskStore | None = None,
+    weather: Callable[[date], str | None] | None = None,
+    usage_log: UsageLog | None = None,
 ) -> DailySummary | None:
     """Genera y envía el resumen del día. Devuelve None si ya se había enviado.
 
@@ -149,8 +152,10 @@ def send_daily_summary(
         return None
     meetings = calendar.list_meetings(day, day)
     due_tasks = tasks.due_by(day) if tasks is not None else []
-    highlights = write_highlights(client, model, day, meetings, due_tasks) if meetings else None
-    summary = build_summary(day, meetings, highlights, calendar.name, due_tasks)
+    record = (lambda usage: usage_log.record("resumen", model, usage)) if usage_log is not None else None
+    highlights = write_highlights(client, model, day, meetings, due_tasks, record) if meetings else None
+    weather_line = weather(day) if weather is not None else None
+    summary = build_summary(day, meetings, highlights, calendar.name, due_tasks, weather_line)
     notifier.send(summary.subject, summary.body)
     if log is not None:
         log.record_sent(day, now())

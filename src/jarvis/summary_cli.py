@@ -3,7 +3,7 @@
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import NoReturn
 
 import anthropic
@@ -22,7 +22,10 @@ from jarvis.logs import FILE_ONLY, setup_logger
 from jarvis.notify import ConsoleNotifier, NotificationError, Notifier
 from jarvis.storage import SummaryLog
 from jarvis.summary import DailySummary, run_with_retries, send_daily_summary
+from jarvis.assistant import build_weather
 from jarvis.tasks import TaskStore
+from jarvis.usage import UsageLog
+from jarvis.weather import day_line
 
 # En modo programado se reintenta ante fallos temporales (por ejemplo, sin red al encender).
 SCHEDULED_ATTEMPTS = 4  # el primero + 3 reintentos
@@ -55,6 +58,12 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
     if not dry_run or db_path.exists():
         tasks = TaskStore(db_path, now=lambda: datetime.now(settings.timezone))
 
+    weather_service = build_weather(settings)
+
+    def forecast_line(day: date) -> str | None:
+        forecast = weather_service.day(day) if weather_service is not None else None
+        return day_line(forecast) if forecast is not None else None
+
     def attempt() -> DailySummary | None:
         return send_daily_summary(
             day=day,
@@ -66,6 +75,8 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
             now=lambda: datetime.now(settings.timezone),
             force=force,
             tasks=tasks,
+            weather=forecast_line,
+            usage_log=None if dry_run else UsageLog(db_path, now=lambda: datetime.now(settings.timezone)),
         )
 
     def on_retry(attempt_number: int, exc: Exception) -> None:

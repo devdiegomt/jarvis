@@ -22,7 +22,9 @@ from jarvis.reminders import ReminderStore
 from jarvis.speech import Speaker, build_speaker
 from jarvis.tasks import TaskStore
 from jarvis.tools import Confirmer, build_registry
+from jarvis.usage import UsageLog
 from jarvis.voice import Transcriber, build_transcriber
+from jarvis.weather import WeatherService
 
 
 @dataclass
@@ -39,6 +41,8 @@ class Assistant:
     anthropic_client: anthropic.Anthropic
     watched: WatchList
     mail: GmailReader | None  # None si los avisos de correo están apagados o Google no está autorizado
+    usage: UsageLog
+    weather: WeatherService | None  # None si no hay ciudad configurada (JARVIS_CIUDAD)
 
     def agent_factory(self, history: list, system_prompt: str, confirm: Confirmer) -> Agent:
         return Agent(
@@ -53,6 +57,7 @@ class Assistant:
                 web=self.settings.web,
                 watched=self.watched,
                 mail=self.mail,
+                weather=self.weather,
             ),
             model=self.settings.model,
             system_prompt=system_prompt,
@@ -92,7 +97,16 @@ def build_assistant(settings: Settings, calendar: CalendarSource) -> Assistant:
         anthropic_client=anthropic.Anthropic(api_key=settings.api_key),
         watched=WatchList(db_path),
         mail=build_mail_reader(settings),
+        usage=UsageLog(db_path, now=now),
+        weather=build_weather(settings),
     )
+
+
+def build_weather(settings: Settings) -> WeatherService | None:
+    """Clima de Open-Meteo para la ciudad de `JARVIS_CIUDAD`, si está configurada."""
+    if not settings.web.city:
+        return None
+    return WeatherService(settings.web.city, settings.web.country, settings.timezone)
 
 
 def build_mail_reader(settings: Settings) -> GmailReader | None:
