@@ -47,7 +47,6 @@ class Assistant:
                 tasks=self.tasks,
                 memories=self.memories,
                 web=self.settings.web,
-                timezone=self.settings.timezone,
             ),
             model=self.settings.model,
             system_prompt=system_prompt,

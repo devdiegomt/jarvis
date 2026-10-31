@@ -5,7 +5,7 @@ y añádela en `build_tools`. No hace falta tocar `agent.py`.
 """
 
 from collections.abc import Callable
-from datetime import datetime, tzinfo
+from datetime import datetime
 
 from jarvis.agenda import CalendarSource
 from jarvis.config import WebSettings
@@ -46,13 +46,12 @@ def build_registry(
     tasks: TaskStore | None = None,
     memories: MemoryStore | None = None,
     web: WebSettings | None = None,
-    timezone: tzinfo | None = None,
 ) -> ToolRegistry:
     """Crea un registro con todas las tools integradas (y las de internet, si se pasa `web`)."""
     registry = ToolRegistry(confirm=confirm)
     for tool in build_tools(calendar, reminders, now, tasks, memories):
         registry.register(tool)
-    for definition in internet.build_server_tools(web, timezone) if web is not None else []:
+    for definition in internet.build_server_tools(web) if web is not None else []:
         registry.register_server_tool(definition)
     return registry
 
