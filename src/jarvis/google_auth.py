@@ -11,11 +11,17 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-# Permisos mínimos: leer el calendario y enviar correos (no leerlos ni borrarlos).
+# Permisos mínimos: ver y editar eventos del calendario (no compartir ni borrar calendarios) y
+# enviar correos (no leerlos ni borrarlos). `calendar.readonly` es el permiso de antes de la v0.12:
+# con él JARVIS sigue leyendo el calendario, pero no puede agendar.
+CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 
 SCOPE_DESCRIPTIONS = {
+    CALENDAR_EVENTS_SCOPE: (
+        "ver y editar los eventos de tu calendario (siempre te pedirá confirmación antes de cambiar algo)"
+    ),
     CALENDAR_SCOPE: "leer tu calendario",
     GMAIL_SEND_SCOPE: "enviar correos en tu nombre (JARVIS solo te envía el resumen diario)",
 }
@@ -29,6 +35,15 @@ class GoogleAuthError(Exception):
 
 class GoogleNotAuthorizedError(GoogleAuthError):
     """No hay autorización válida, o le faltan permisos."""
+
+
+def token_scopes(token_file: Path) -> list[str]:
+    """Permisos guardados en el token (sin conectarse a Google). Vacío si no hay token válido."""
+    try:
+        scopes = json.loads(token_file.read_text(encoding="utf-8")).get("scopes", [])
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [str(scope) for scope in scopes] if isinstance(scopes, list) else []
 
 
 def load_credentials(token_file: Path, required_scopes: Sequence[str]) -> Credentials:

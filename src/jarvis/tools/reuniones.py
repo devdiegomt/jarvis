@@ -37,7 +37,9 @@ def build_tool(calendar: CalendarSource) -> Tool:
             "Obtiene las reuniones y eventos del calendario del usuario para una fecha "
             f"o un rango de hasta {MAX_RANGE_DAYS} días. Úsala cuando pregunte por su agenda, "
             "reuniones o disponibilidad. Devuelve JSON con título, inicio, fin, si es de día "
-            "completo, ubicación y participantes. Las horas están en la zona horaria del usuario."
+            "completo, ubicación y participantes. Las horas están en la zona horaria del usuario. "
+            "Cada evento trae su `id` (para mover_evento o cancelar_evento) y `organizas_tu` "
+            "(false si es una invitación de otra persona, que JARVIS no puede cambiar)."
         ),
         input_schema={
             "type": "object",

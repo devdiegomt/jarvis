@@ -135,7 +135,7 @@ def run_chat() -> None:
 
 def run_google_login() -> None:
     from jarvis.google_auth import (
-        CALENDAR_SCOPE,
+        CALENDAR_EVENTS_SCOPE,
         GMAIL_SEND_SCOPE,
         GoogleAuthError,
         describe_scopes,
@@ -151,7 +151,7 @@ def run_google_login() -> None:
         sys.exit(1)
 
     # Permiso mínimo: Gmail solo si el resumen diario se envía por Gmail.
-    scopes = [CALENDAR_SCOPE] + ([GMAIL_SEND_SCOPE] if summary.uses_gmail else [])
+    scopes = [CALENDAR_EVENTS_SCOPE] + ([GMAIL_SEND_SCOPE] if summary.uses_gmail else [])
     print(f"Vas a autorizar a JARVIS a {describe_scopes(scopes)}.")
     try:
         login(google.credentials_file, google.token_file, scopes)
@@ -162,7 +162,8 @@ def run_google_login() -> None:
         print("\nAutorización cancelada.", file=sys.stderr)
         sys.exit(1)
     print(f"Autorización guardada en {google.token_file}.")
-    print("Con JARVIS_CALENDAR=google en tu .env, `uv run jarvis` usará tu calendario real.")
+    print("Con JARVIS_CALENDAR=google en tu .env, JARVIS usará tu calendario real (y podrá agendar,")
+    print("siempre pidiéndote confirmación). Si JARVIS corre en segundo plano, reinícialo.")
 
 
 def run_prepare_voice() -> None:

@@ -10,7 +10,7 @@ class CalendarError(Exception):
 
 
 class CalendarNotAuthorizedError(CalendarError):
-    """No hay autorización válida para leer el calendario."""
+    """No hay autorización válida para leer (o editar) el calendario."""
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,9 @@ class Meeting:
     all_day: bool = False
     location: str | None = None
     attendees: tuple[str, ...] = ()
+    id: str | None = None  # para moverlo o cancelarlo
+    organized_by_me: bool = True  # False en invitaciones de otras personas: JARVIS no las toca
+    recurring: bool = False  # una ocasión de un evento que se repite
 
 
 class CalendarSource(Protocol):
@@ -37,6 +40,27 @@ class CalendarSource(Protocol):
     def list_meetings(self, start: date, end: date) -> list[Meeting]:
         """Reuniones entre `start` y `end` (ambas fechas incluidas), ordenadas por inicio."""
         ...
+
+
+class WritableCalendar(CalendarSource, Protocol):
+    """Fuente de calendario que también permite agendar, mover y cancelar eventos.
+
+    Nunca envía invitaciones ni avisos a otras personas.
+    """
+
+    def get_event(self, event_id: str) -> Meeting | None: ...
+
+    def create_event(
+        self, title: str, start: datetime, end: datetime, location: str | None, description: str | None
+    ) -> Meeting: ...
+
+    def move_event(self, event_id: str, start: datetime, end: datetime) -> Meeting: ...
+
+    def delete_event(self, event_id: str) -> None: ...
+
+
+def supports_writing(calendar: CalendarSource) -> bool:
+    return all(hasattr(calendar, name) for name in ("get_event", "create_event", "move_event", "delete_event"))
 
 
 def meeting_to_dict(meeting: Meeting) -> dict[str, Any]:
@@ -55,6 +79,11 @@ def meeting_to_dict(meeting: Meeting) -> dict[str, Any]:
         data["ubicacion"] = meeting.location
     if meeting.attendees:
         data["participantes"] = list(meeting.attendees)
+    if meeting.id is not None:
+        data["id"] = meeting.id
+        data["organizas_tu"] = meeting.organized_by_me
+    if meeting.recurring:
+        data["recurrente"] = True
     return data
 
 
