@@ -30,6 +30,7 @@ class Meeting:
     id: str | None = None  # para moverlo o cancelarlo
     organized_by_me: bool = True  # False en invitaciones de otras personas: JARVIS no las toca
     recurring: bool = False  # una ocasión de un evento que se repite
+    link: str | None = None  # enlace de la videollamada (Meet, Zoom…), si lo hay
 
 
 class CalendarSource(Protocol):

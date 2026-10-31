@@ -120,6 +120,14 @@ class WebSettings:
 
 
 @dataclass(frozen=True)
+class ProactiveSettings:
+    """Avisos por iniciativa de JARVIS. `meeting_lead_minutes=0` y `evening_time=None` los apagan."""
+
+    meeting_lead_minutes: int = 10
+    evening_time: time | None = time(20, 0)  # vistazo a mañana, de domingo a jueves
+
+
+@dataclass(frozen=True)
 class Settings:
     api_key: str
     model: str
@@ -132,6 +140,7 @@ class Settings:
     speech: SpeechSettings
     wake_word: WakeWordSettings
     web: WebSettings
+    proactive: ProactiveSettings = ProactiveSettings()
 
 
 def read_env() -> Mapping[str, str]:
@@ -160,6 +169,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         speech=load_speech_settings(env),
         wake_word=load_wake_word_settings(env),
         web=load_web_settings(env),
+        proactive=load_proactive_settings(env),
     )
 
 
@@ -285,6 +295,27 @@ def load_web_settings(env: Mapping[str, str]) -> WebSettings:
     if country and not re.fullmatch(r"[A-Z]{2}", country):
         raise ConfigError(f"JARVIS_PAIS='{country}' no es válido: usa el código de dos letras, por ejemplo CO.")
     return WebSettings(enabled=value != "no", city=_get(env, "JARVIS_CIUDAD"), country=country)
+
+
+def load_proactive_settings(env: Mapping[str, str]) -> ProactiveSettings:
+    raw_lead = _get(env, "JARVIS_AVISO_REUNION")
+    try:
+        lead = int(raw_lead) if raw_lead else ProactiveSettings.meeting_lead_minutes
+    except ValueError:
+        lead = -1
+    if not 0 <= lead <= 120:
+        raise ConfigError(
+            f"JARVIS_AVISO_REUNION='{raw_lead}' no es válido: minutos antes de cada reunión "
+            "(de 0 a 120; 0 = sin aviso)."
+        )
+    evening = _get(env, "JARVIS_VISTAZO_MANANA")
+    if evening.lower() == "no":
+        evening_time = None
+    else:
+        default = ProactiveSettings.evening_time
+        assert default is not None
+        evening_time = _load_time(env, "JARVIS_VISTAZO_MANANA", default)
+    return ProactiveSettings(meeting_lead_minutes=lead, evening_time=evening_time)
 
 
 def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:

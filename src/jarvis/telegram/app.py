@@ -25,6 +25,7 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.logs import FILE_ONLY, setup_logger
+from jarvis.proactive import NoticeLog, ProactiveNotifier, describe_proactive
 from jarvis.prompts import build_chat_system_prompt
 from jarvis.reminder_delivery import ReminderDelivery
 from jarvis.speech import describe_speech
@@ -86,6 +87,18 @@ def run_telegram(scheduled: bool = False) -> None:
     )
     chat.start()
     threading.Thread(target=delivery.run_forever, name="jarvis-recordatorios", daemon=True).start()
+    notifier = ProactiveNotifier(
+        calendar=calendar,
+        tasks=assistant.tasks,
+        channel=channel,
+        owner=telegram.owner_id,
+        settings=settings.proactive,
+        log=NoticeLog(settings.summary.db_path),
+        timezone=settings.timezone,
+        now=now,
+    )
+    if notifier.enabled:
+        threading.Thread(target=notifier.run_forever, name="jarvis-avisos", daemon=True).start()
 
     voice_status, speech_status = describe_voice(settings.voice), describe_speech(settings.speech)
     wake_status = describe_wake_word(settings)
@@ -96,6 +109,7 @@ def run_telegram(scheduled: bool = False) -> None:
     logger.info("Bot de Telegram iniciado%s.", " en segundo plano" if scheduled else "")
     logger.info("Notas de voz: %s. Respuestas con voz: %s.", voice_status, speech_status, extra=FILE_ONLY)
     logger.info("Hey JARVIS en el PC: %s.", wake_status, extra=FILE_ONLY)
+    logger.info("Avisos: %s.", describe_proactive(settings.proactive), extra=FILE_ONLY)
     if settings.wake_word.enabled:
         from jarvis.pc_voice import start_pc_voice  # usa numpy, del grupo opcional de voz
 

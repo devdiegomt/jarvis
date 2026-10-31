@@ -18,6 +18,7 @@ from jarvis.logs import tail
 from jarvis.long_term_memory import MemoryStore
 from jarvis.reminders import ReminderStore
 from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskInfo, describe_result
+from jarvis.proactive import describe_proactive
 from jarvis.speech import describe_speech
 from jarvis.tasks import TaskStore
 from jarvis.voice import describe_voice
@@ -95,6 +96,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     lines.append(f"Respuestas con voz: {describe_speech(settings.speech)}")
     lines.append(f"Hey JARVIS en el PC: {describe_wake_word(settings)}")
     lines.append(f"Búsqueda en internet: {_describe_web(settings)}")
+    lines.append(f"Avisos: {describe_proactive(settings.proactive)}")
 
     # Solo cantidades y fechas: el texto de recordatorios, pendientes y recuerdos no se muestra.
     # `estado` solo lee: si la base de datos aún no existe, no la crea.

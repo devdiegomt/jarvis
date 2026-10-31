@@ -55,11 +55,14 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
 - **v0.12 (hecha):** escribir en el calendario: `crear_evento`, `mover_evento` y `cancelar_evento`,
   siempre con confirmación (detalle y choques), solo sobre eventos que organiza el usuario y sin
   invitar ni avisar a nadie; permiso `calendar.events`. Ver `docs/adr/016-escribir-en-el-calendario.md`.
-- **v0.13 (siguiente):** avisos proactivos.
+- **v0.13 (hecha):** avisos proactivos por Telegram, armados en código: antes de cada reunión
+  (`JARVIS_AVISO_REUNION`, con enlace de la videollamada) y vistazo a mañana de domingo a jueves
+  (`JARVIS_VISTAZO_MANANA`); sin repetir avisos aunque JARVIS se reinicie.
+  Ver `docs/adr/017-avisos-proactivos.md`.
+- **v0.14 (siguiente):** Gmail (avisos de clientes).
 - Pendiente pequeño: reutilizar la conexión HTTPS con Telegram (hoy cada llamada abre una nueva y
   suma unos segundos por respuesta).
-- Después: Gmail (avisos
-  de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
+- Después: el alojamiento (servidor, nube) se decidirá según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
 Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar cada versión).
@@ -101,6 +104,7 @@ jarvis/
 │   ├── memory.py       # SQLite: conversaciones del chat, retención, duplicados y preferencias (/voz)
 │   ├── reminders.py    # SQLite: recordatorios (crear, cancelar, posponer, vencidos)
 │   ├── reminder_delivery.py # entrega de recordatorios por el chat y sus botones
+│   ├── proactive.py    # avisos por iniciativa de JARVIS: antes de reuniones y vistazo a mañana
 │   ├── tasks.py        # SQLite: pendientes (con fecha límite opcional)
 │   ├── long_term_memory.py # SQLite: memoria a largo plazo (datos del usuario, sin caducidad)
 │   ├── confirmation.py # interpretación de respuestas s/n, común a todos los canales

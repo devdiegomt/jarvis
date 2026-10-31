@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.2 (cubre hasta la v0.12)
+- **Versión del documento:** 2.3 (cubre hasta la v0.13)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -211,6 +211,16 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-60.** Con la autorización anterior (solo lectura), JARVIS sigue leyendo el calendario y explica
   cómo dar el permiso nuevo al intentar escribir; `estado` lo indica.
 
+### v0.13: avisos proactivos
+
+- **RF-61.** JARVIS avisa por Telegram antes de cada reunión con hora (`JARVIS_AVISO_REUNION`, 10
+  minutos por defecto; 0 lo apaga), con horario, participantes, lugar y enlace de la videollamada.
+- **RF-62.** Cada reunión se avisa una sola vez, aunque JARVIS se reinicie; si se mueve, se avisa a la
+  hora nueva. No se avisa tarde (si la reunión ya empezó) ni de eventos de día completo.
+- **RF-63.** De domingo a jueves, a partir de `JARVIS_VISTAZO_MANANA` (20:00 por defecto; `no` lo
+  apaga), JARVIS envía una vez un vistazo a mañana: reuniones y pendientes que vencen.
+- **RF-64.** `estado` muestra qué avisos están activos.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -252,6 +262,9 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 
 ### 4.3 Fiabilidad y rapidez
 
+- **RNF-09d.** Los avisos se arman en código, sin IA (instantáneos y sin costo); el calendario se
+  consulta como mucho cada 5 minutos y los avisos enviados se registran en `jarvis.db` (sin títulos)
+  durante 30 días.
 - **RNF-09c.** Las búsquedas usan las tools de servidor de Anthropic (sin otro proveedor ni clave): las
   consultas pasan por Anthropic, que ya recibe la conversación. Cada búsqueda se paga aparte, por eso
   hay un tope por mensaje y el registro anota cuántas se hicieron (nunca qué se buscó).
@@ -312,4 +325,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-50 a RF-52 | `azure_speech.py`, `speech.py`, `config.py`, `cli.py`, `wake_word.py` | `test_azure_speech.py` |
 | RF-53 a RF-56 | `tools/internet.py`, `tools/registry.py`, `agent.py`, `chat.py`, `prompts.py`, `config.py`, `status.py` | `test_internet.py` |
 | RF-57 a RF-60 | `tools/calendario.py`, `agenda/`, `google_auth.py`, `tools/registry.py`, `status.py`, `cli.py` | `test_calendar_writing.py` |
+| RF-61 a RF-64 | `proactive.py`, `agenda/google.py`, `config.py`, `telegram/app.py`, `status.py` | `test_proactive.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |
