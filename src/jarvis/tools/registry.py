@@ -89,7 +89,13 @@ class ToolRegistry:
             return ToolResult(f"Entrada inválida para '{name}': {problem}", is_error=True)
 
         if tool.confirmation_prompt is not None:
-            if not self._confirm(tool.confirmation_prompt(tool_input)):
+            # Preparar la pregunta también valida la acción (por ejemplo, que el evento exista y sea
+            # del usuario): si falla, el modelo recibe el error y no se le pregunta nada al usuario.
+            try:
+                prompt = tool.confirmation_prompt(tool_input)
+            except Exception as exc:  # noqa: BLE001 - cualquier fallo se reporta al modelo
+                return ToolResult(f"Error al preparar '{name}': {exc}", is_error=True)
+            if not self._confirm(prompt):
                 return ToolResult(CANCELLED_MESSAGE)
 
         try:

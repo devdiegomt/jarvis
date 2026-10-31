@@ -5,8 +5,10 @@ from jarvis.agenda.base import (
     CalendarNotAuthorizedError,
     CalendarSource,
     Meeting,
+    WritableCalendar,
     meeting_to_dict,
     meeting_to_line,
+    supports_writing,
 )
 from jarvis.agenda.sample import SampleCalendar
 from jarvis.config import ConfigError, Settings
@@ -39,7 +41,9 @@ __all__ = [
     "CalendarSource",
     "Meeting",
     "SampleCalendar",
+    "WritableCalendar",
     "build_calendar",
     "meeting_to_dict",
     "meeting_to_line",
+    "supports_writing",
 ]

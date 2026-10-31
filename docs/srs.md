@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.1 (cubre hasta la v0.11)
+- **Versión del documento:** 2.2 (cubre hasta la v0.12)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -200,14 +200,25 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-56.** La ubicación configurada (`JARVIS_CIUDAD`, `JARVIS_PAIS`) mejora las búsquedas locales
   (va en las instrucciones del modelo); `JARVIS_BUSQUEDA=no` las desactiva y `estado` muestra si están activas.
 
+### v0.12: escribir en el calendario
+
+- **RF-57.** El usuario agenda eventos en lenguaje natural (título, inicio, duración, lugar y notas
+  opcionales); no se aceptan horas pasadas ni a más de dos años.
+- **RF-58.** El usuario mueve o cancela eventos que organiza él; las invitaciones de otras personas no
+  se tocan. En eventos recurrentes, el cambio afecta solo esa ocasión.
+- **RF-59.** Agendar, mover o cancelar siempre pide confirmación mostrando el detalle y los choques de
+  horario; nunca se invita ni se avisa a otras personas.
+- **RF-60.** Con la autorización anterior (solo lectura), JARVIS sigue leyendo el calendario y explica
+  cómo dar el permiso nuevo al intentar escribir; `estado` lo indica.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
 
 - **RNF-01.** Ninguna credencial (API keys, tokens, secretos) está en el código ni en el repositorio:
   van en `.env` o en `~/.config/jarvis/`, ignorados por git. `.env.example` lista los nombres sin valores.
-- **RNF-02.** Permiso mínimo en cada servicio: `calendar.readonly`; `gmail.send` solo si el resumen
-  está configurado.
+- **RNF-02.** Permiso mínimo en cada servicio: `calendar.events` (ver y editar eventos, no
+  calendarios); `gmail.send` solo si el resumen va por Gmail.
 - **RNF-03.** Los tokens OAuth se guardan con permisos de archivo solo para el usuario.
 - **RNF-04.** JARVIS no abre puertos en el PC: recibe los mensajes de Telegram consultando su API
   (long polling). El token del bot nunca aparece en logs ni en mensajes de error.
@@ -279,7 +290,7 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 
 - Leer los chats personales del usuario (WhatsApp, Telegram) o escribir desde su cuenta.
 - Enviar mensajes reales a terceros: `enviar_mensaje` sigue simulada.
-- Crear, modificar o borrar eventos del calendario.
+- Invitar a otras personas a los eventos, eventos de día completo o recurrentes creados por JARVIS.
 - Imágenes o archivos en el chat; otras voces en la nube (por ejemplo, ElevenLabs).
 - WhatsApp como canal (retirado en la v0.5; ver ADR 004 y ADR 005).
 - Varios usuarios, servidor en la nube, Alexa y llamadas telefónicas (ver roadmap).
@@ -300,4 +311,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-46 a RF-49 | `wake_word.py`, `pc_voice.py`, `assistant.py`, `prompts.py`, `telegram/app.py`, `cli.py`, `status.py` | `test_pc_voice.py`, `test_status.py` |
 | RF-50 a RF-52 | `azure_speech.py`, `speech.py`, `config.py`, `cli.py`, `wake_word.py` | `test_azure_speech.py` |
 | RF-53 a RF-56 | `tools/internet.py`, `tools/registry.py`, `agent.py`, `chat.py`, `prompts.py`, `config.py`, `status.py` | `test_internet.py` |
+| RF-57 a RF-60 | `tools/calendario.py`, `agenda/`, `google_auth.py`, `tools/registry.py`, `status.py`, `cli.py` | `test_calendar_writing.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

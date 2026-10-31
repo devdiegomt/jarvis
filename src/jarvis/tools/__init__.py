@@ -7,12 +7,12 @@ y añádela en `build_tools`. No hace falta tocar `agent.py`.
 from collections.abc import Callable
 from datetime import datetime
 
-from jarvis.agenda import CalendarSource
+from jarvis.agenda import CalendarSource, supports_writing
 from jarvis.config import WebSettings
 from jarvis.long_term_memory import MemoryStore
 from jarvis.reminders import ReminderStore
 from jarvis.tasks import TaskStore
-from jarvis.tools import internet, memoria, mensajes, pendientes, recordatorios, reuniones
+from jarvis.tools import calendario, internet, memoria, mensajes, pendientes, recordatorios, reuniones
 from jarvis.tools.registry import Confirmer, Tool, ToolRegistry, ToolResult, deny_all
 
 
@@ -29,6 +29,8 @@ def build_tools(
     las de memoria, si se pasa `memories`.
     """
     tools = [reuniones.build_tool(calendar), mensajes.TOOL]
+    if now is not None and supports_writing(calendar):
+        tools += calendario.build_tools(calendar, now)  # type: ignore[arg-type]
     if reminders is not None and now is not None:
         tools += recordatorios.build_tools(reminders, now)
     if tasks is not None and now is not None:

@@ -73,6 +73,11 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
         return [f"Configuración: ⚠ {exc}"]
 
     source = "Google Calendar" if settings.calendar_source == "google" else "ejemplo (datos simulados)"
+    if settings.calendar_source == "google":
+        from jarvis.google_auth import CALENDAR_EVENTS_SCOPE, token_scopes
+
+        can_write = CALENDAR_EVENTS_SCOPE in token_scopes(settings.google.token_file)
+        source += "" if can_write else " (solo lectura: ejecuta `google-login` para poder agendar)"
     lines.append(f"Calendario: {source}")
     summary = settings.summary
     if summary.enabled:

@@ -8,7 +8,8 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.11**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
+**v0.12**: lee tu Google Calendar y agenda, mueve o cancela tus eventos (siempre con tu
+confirmación), chateas con JARVIS por Telegram (también en
 segundo plano) escribiéndole o con notas de voz, y te responde también con voz; en el PC lo llamas
 con "Hey JARVIS" y te contesta en voz alta. Te crea recordatorios, lleva tu lista de pendientes,
 recuerda lo que le cuentas de ti entre conversaciones, busca en internet lo que cambia (clima,
@@ -51,9 +52,10 @@ calendario real, sigue los pasos de la siguiente sección.
 
 ## Conectar Google Calendar
 
-JARVIS solo pide permiso de **lectura** del calendario (`calendar.readonly`): no puede crear,
-modificar ni borrar eventos. Si activas el resumen diario, pide además permiso para **enviar**
-correos (`gmail.send`), sin acceso a leerlos ni borrarlos. La autorización se guarda en tu equipo,
+JARVIS pide permiso para **ver y editar los eventos** del calendario (`calendar.events`): no
+puede compartir ni borrar calendarios, y antes de agendar, mover o cancelar algo siempre te pide
+confirmación. Si el resumen diario va por Gmail, pide además permiso para **enviar** correos
+(`gmail.send`), sin acceso a leerlos ni borrarlos. La autorización se guarda en tu equipo,
 fuera del repositorio.
 
 ### 1. Crear las credenciales en Google Cloud (una sola vez)
@@ -223,6 +225,20 @@ llega al volver, marcado como atrasado.
 Los recordatorios se guardan en tu equipo (`jarvis.db`); los ya enviados o cancelados se borran a
 los 30 días. Crear o cancelar un recordatorio no pide confirmación: es interno a JARVIS y siempre
 se puede deshacer. `uv run jarvis estado` muestra cuántos hay pendientes y la hora del próximo.
+
+## Agendar en el calendario
+
+Pídeselo como a una persona: *"Agéndame dentista el jueves a las 3"*, *"Mueve la reunión de
+planificación a las 5"*, *"Cancela lo de mañana a las 9"*. Antes de cambiar algo, JARVIS te muestra
+el detalle (y si choca con otra cosa) y espera tu **Sí / No**; por voz, te lo pregunta.
+
+- Solo toca **eventos que organizas tú**: las invitaciones de otras personas no las mueve ni las
+  cancela (respóndelas desde Google Calendar).
+- Nunca invita a nadie ni envía avisos: los eventos que crea son solo para ti.
+- Si un evento se repite, mover o cancelar afecta solo esa ocasión (te lo dice al confirmar).
+- **Si ya tenías JARVIS autorizado antes de la v0.12**, el permiso era solo de lectura: ejecuta una
+  vez `uv run python -m jarvis google-login` y acepta el nuevo permiso. Mientras tanto, sigue leyendo
+  tu agenda, y `estado` muestra *"solo lectura"*.
 
 ## Búsqueda en internet
 

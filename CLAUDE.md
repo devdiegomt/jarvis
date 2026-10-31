@@ -52,10 +52,13 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   Ver `docs/adr/015-busqueda-en-internet.md`. v0.11.1: el registro guarda el motivo que da la API
   cuando rechaza una petición (tipo, código y mensaje recortado; nunca el contenido). v0.11.2: la
   ubicación ya no va en `user_location` de la búsqueda (la API rechazaba el país CO), solo en el prompt.
-- **v0.12 (siguiente):** escribir en el calendario.
+- **v0.12 (hecha):** escribir en el calendario: `crear_evento`, `mover_evento` y `cancelar_evento`,
+  siempre con confirmación (detalle y choques), solo sobre eventos que organiza el usuario y sin
+  invitar ni avisar a nadie; permiso `calendar.events`. Ver `docs/adr/016-escribir-en-el-calendario.md`.
+- **v0.13 (siguiente):** avisos proactivos.
 - Pendiente pequeño: reutilizar la conexión HTTPS con Telegram (hoy cada llamada abre una nueva y
   suma unos segundos por respuesta).
-- Después, en este orden: avisos proactivos; Gmail (avisos
+- Después: Gmail (avisos
   de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
@@ -65,7 +68,7 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 - Python 3.12
 - SDK oficial de Anthropic (`anthropic`), con tool use manual (loop propio, no frameworks de agentes)
 - Google Calendar API y Gmail API (`google-api-python-client`, `google-auth-oauthlib`):
-  `calendar.readonly` y, solo si el resumen va por Gmail, `gmail.send`
+  `calendar.events` y, solo si el resumen va por Gmail, `gmail.send`
 - Modelo configurable por variable de entorno `JARVIS_MODEL` (default: `claude-sonnet-5-5`)
 - API de bots de Telegram vía `urllib` (long polling, sin webhook), con `truststore` para verificar
   HTTPS con el almacén de certificados del sistema
@@ -86,7 +89,7 @@ jarvis/
 │   ├── agenda/         # fuentes de calendario
 │   │   ├── base.py     # Meeting, CalendarSource (interfaz) y errores
 │   │   ├── sample.py   # datos de ejemplo
-│   │   └── google.py   # Google Calendar (lectura)
+│   │   └── google.py   # Google Calendar (leer, agendar, mover y cancelar)
 │   ├── google_auth.py  # OAuth de escritorio con Google, token y permisos
 │   ├── notify/         # canales de envío: Notifier (interfaz), consola, Gmail y Telegram
 │   ├── summary.py      # resumen diario: comentario de Claude, agenda, envío y reintentos
@@ -119,6 +122,7 @@ jarvis/
 │   │   ├── pendientes.py   # agregar, listar, completar y borrar pendientes
 │   │   ├── memoria.py      # recordar_dato, listar_datos, olvidar_dato
 │   │   ├── internet.py     # web_search y web_fetch (tools de servidor de Anthropic)
+│   │   ├── calendario.py   # crear_evento, mover_evento, cancelar_evento (con confirmación)
 │   │   └── ...         # reuniones.py, mensajes.py
 │   └── cli.py          # punto de entrada por consola (chat de consola y subcomandos)
 ├── tests/
@@ -147,7 +151,9 @@ jarvis/
 - Nunca desactivar la verificación de certificados HTTPS. Las llamadas HTTP propias usan `truststore`
   (almacén del sistema), como el SDK de Anthropic.
 - Credenciales y tokens de OAuth viven fuera del repo (por defecto `~/.config/jarvis/`). Pedir siempre
-  el permiso mínimo (hoy `calendar.readonly` y, solo con el resumen por Gmail, `gmail.send`).
+  el permiso mínimo (hoy `calendar.events` y, solo con el resumen por Gmail, `gmail.send`).
+- Escribir en el calendario solo sobre eventos que organiza el usuario, siempre con confirmación, y
+  nunca invitar ni avisar a otras personas (`sendUpdates="none"`).
 - Las acciones programadas (como el resumen diario) no son tools: el destinatario es fijo por
   configuración y el modelo no puede cambiarlo ni disparar envíos.
 - El chat de Telegram solo atiende `TELEGRAM_OWNER_ID` en chat privado y no arranca sin él. JARVIS no
