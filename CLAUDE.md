@@ -49,7 +49,8 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
 - **v0.11 (hecha):** búsqueda en internet y lectura de enlaces con las tools de servidor de Anthropic
   (`web_search`, `web_fetch`; tope de 5 búsquedas por mensaje), ubicación del usuario
   (`JARVIS_CIUDAD`, `JARVIS_PAIS`) y fuentes al final del texto en Telegram.
-  Ver `docs/adr/015-busqueda-en-internet.md`.
+  Ver `docs/adr/015-busqueda-en-internet.md`. v0.11.1: el registro guarda el motivo que da la API
+  cuando rechaza una petición (tipo, código y mensaje recortado; nunca el contenido).
 - **v0.12 (siguiente):** escribir en el calendario.
 - Pendiente pequeño: reutilizar la conexión HTTPS con Telegram (hoy cada llamada abre una nueva y
   suma unos segundos por respuesta).
