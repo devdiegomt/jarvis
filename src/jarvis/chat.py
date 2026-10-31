@@ -317,7 +317,10 @@ class ChatService:
         assert self._speaker is not None
         self._show_typing(to)
         try:
-            self._channel.send_voice(to, self._speaker.speak(text))
+            started = time.monotonic()
+            audio = self._speaker.speak(text)
+            logger.info("Respuesta con voz generada en %.1f s.", time.monotonic() - started)
+            self._channel.send_voice(to, audio)
         except SpeechUnavailableError as exc:
             logger.warning("Respuesta sin voz: %s", exc)
             if not self._speech_warned:
@@ -347,8 +350,12 @@ class ChatService:
 
     def _ask_agent(self, conversation: Conversation, sender: str, text: str) -> str:
         agent = self._agent_factory(conversation.messages, conversation.system_prompt, self._confirmer_for(sender))
+        started = time.monotonic()
         try:
-            return agent.send(text)
+            reply = agent.send(text)
+            # Solo el tiempo (incluye las tools y las confirmaciones): sirve para ver dónde se demora.
+            logger.info("Respuesta de la IA en %.1f s.", time.monotonic() - started)
+            return reply
         except anthropic.APIError as exc:
             logger.error("Error de la API de Anthropic (%s).", type(exc).__name__)
             return AI_ERROR_TEXT

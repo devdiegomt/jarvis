@@ -12,6 +12,7 @@ import importlib.util
 import io
 import logging
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
@@ -76,11 +77,28 @@ class WhisperTranscriber:
             model = self._get_model()
             try:
                 # `vad_filter` descarta los silencios, que es donde Whisper suele inventar frases.
-                segments, _info = model.transcribe(io.BytesIO(audio), language=LANGUAGE, vad_filter=True)
+                # `beam_size=1` (búsqueda simple) es mucho más rápido en CPU y basta para frases cortas.
+                segments, _info = model.transcribe(
+                    io.BytesIO(audio),
+                    language=LANGUAGE,
+                    vad_filter=True,
+                    beam_size=1,
+                    condition_on_previous_text=False,
+                )
                 return " ".join(segment.text.strip() for segment in segments).strip()
             except Exception as exc:  # audio dañado o fallo interno del modelo: no debe tumbar el chat
                 logger.error("Falló la transcripción (%s).", type(exc).__name__)
                 raise TranscriptionError("No pude transcribir el audio. Inténtalo de nuevo.") from exc
+
+    def preload(self) -> None:
+        """Carga el modelo ya (al arrancar), si está instalado y descargado."""
+        with self._lock:
+            try:
+                started = time.monotonic()
+                self._get_model()
+                logger.info("Whisper listo en %.1f s.", time.monotonic() - started)
+            except TranscriptionError as exc:
+                logger.info("Whisper no se precargó: %s", exc)
 
     def _get_model(self) -> Any:
         if self._model is not None:

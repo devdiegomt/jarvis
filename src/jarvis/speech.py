@@ -10,6 +10,7 @@ import io
 import logging
 import re
 import threading
+import time
 import unicodedata
 from collections.abc import Callable
 from pathlib import Path
@@ -91,6 +92,16 @@ class PiperSpeaker:
         if not pcm:
             raise SpeechError("No hay nada que decir en voz alta.")
         return pcm, chunks[0].sample_rate
+
+    def preload(self) -> None:
+        """Carga la voz ya (al arrancar), si está instalada y descargada."""
+        with self._lock:
+            try:
+                started = time.monotonic()
+                self._get_voice()
+                logger.info("Piper listo en %.1f s.", time.monotonic() - started)
+            except SpeechError as exc:
+                logger.info("Piper no se precargó: %s", exc)
 
     def _get_voice(self) -> Any:
         if self._voice is not None:

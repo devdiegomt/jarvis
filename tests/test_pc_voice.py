@@ -201,14 +201,14 @@ def all_voice_models(settings) -> None:  # type: ignore[no-untyped-def]
 # --- Grabación del pedido ---------------------------------------------------
 
 
-def test_recording_stops_after_a_second_of_silence() -> None:
+def test_recording_stops_after_a_short_silence() -> None:
     audio_in = frames_for(0.4, QUIET) + frames_for(1.2, LOUD) + frames_for(2, QUIET) + frames_for(5, LOUD)
     frames = iter(audio_in)
 
     audio = record_request(frames, threshold=300)
 
     assert audio is not None
-    used = 5 + 15 + 12  # antes de hablar + voz + el silencio que cierra el pedido (12 bloques, ~1 s)
+    used = 5 + 15 + 9  # antes de hablar + voz + el silencio que cierra el pedido (9 bloques, ~0,7 s)
     assert len(audio) == FRAME_SAMPLES * used
     assert len(list(frames)) == len(audio_in) - used  # el resto queda para seguir escuchando
 

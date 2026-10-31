@@ -145,3 +145,14 @@ def test_agent_continues_an_existing_history() -> None:
     agent.send("¿Cómo me llamo?")
 
     assert [m["role"] for m in client.messages.calls[0]["messages"]] == ["user", "assistant", "user"]
+
+
+def test_effort_is_sent_when_configured() -> None:
+    from jarvis.tools import ToolRegistry
+
+    client = FakeClient([text_response("Hola."), text_response("Hola.")])
+    Agent(client=client, registry=ToolRegistry(), model="m", system_prompt="p", effort="low").send("hola")  # type: ignore[arg-type]
+    Agent(client=client, registry=ToolRegistry(), model="m", system_prompt="p").send("hola")  # type: ignore[arg-type]
+
+    assert client.messages.calls[0]["output_config"] == {"effort": "low"}
+    assert "output_config" not in client.messages.calls[1]

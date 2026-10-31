@@ -4,6 +4,7 @@ Se construyen una sola vez por proceso: así Whisper y Piper se cargan una vez a
 varios canales, y todos comparten los mismos recordatorios, pendientes y memoria.
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -49,7 +50,21 @@ class Assistant:
             model=self.settings.model,
             system_prompt=system_prompt,
             history=history,
+            effort=self.settings.effort,
         )
+
+    def start_warm_up(self) -> threading.Thread:
+        """Carga Whisper y Piper en segundo plano al arrancar, para que la primera nota de voz o el
+        primer "Hey JARVIS" no esperen varios segundos. Si la voz no está lista, no hace nada."""
+        thread = threading.Thread(target=self._warm_up, name="jarvis-precarga-voz", daemon=True)
+        thread.start()
+        return thread
+
+    def _warm_up(self) -> None:
+        for component in (self.transcriber, self.speaker):
+            preload = getattr(component, "preload", None)
+            if preload is not None:
+                preload()
 
 
 def build_assistant(settings: Settings, calendar: CalendarSource) -> Assistant:

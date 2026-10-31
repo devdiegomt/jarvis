@@ -278,3 +278,30 @@ def test_prepare_voice_without_piper(monkeypatch: pytest.MonkeyPatch, capsys: py
         prepare(monkeypatch, installed=False)
 
     assert "uv sync" in capsys.readouterr().err
+
+
+def test_preload_loads_the_voice_once_and_never_raises(tmp_path: Path, encoded: list) -> None:
+    piper, loads = speaker(tmp_path, FakeVoice())
+    piper.preload()  # sin voz descargada: no falla
+    assert loads == []
+
+    downloaded_voice(tmp_path)
+    piper.preload()
+    piper.speak("Hola")
+    assert len(loads) == 1
+
+
+def test_assistant_warm_up_preloads_whisper_and_piper(isolated_config_dir: Path) -> None:
+    from datetime import UTC
+
+    from jarvis.agenda import SampleCalendar
+    from jarvis.assistant import build_assistant
+
+    calls: list[str] = []
+    assistant = build_assistant(load_settings({"ANTHROPIC_API_KEY": "sk-test"}), SampleCalendar(UTC))
+    assistant.transcriber.preload = lambda: calls.append("whisper")  # type: ignore[union-attr]
+    assistant.speaker.preload = lambda: calls.append("piper")  # type: ignore[union-attr]
+
+    assistant.start_warm_up().join(timeout=5)
+
+    assert calls == ["whisper", "piper"]

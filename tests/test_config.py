@@ -155,3 +155,13 @@ def test_telegram_summary_never_needs_gmail() -> None:
 def test_invalid_summary_channel() -> None:
     with pytest.raises(ConfigError, match="JARVIS_RESUMEN_CANAL"):
         load_settings({**BASE_ENV, "JARVIS_RESUMEN_CANAL": "whatsapp"})
+
+
+def test_effort_defaults_to_low_for_quick_replies() -> None:
+    assert load_settings(BASE_ENV).effort == "low"
+    assert load_settings({**BASE_ENV, "JARVIS_ESFUERZO": "High"}).effort == "high"
+
+
+def test_invalid_effort_fails() -> None:
+    with pytest.raises(ConfigError, match="JARVIS_ESFUERZO"):
+        load_settings({**BASE_ENV, "JARVIS_ESFUERZO": "rapido"})

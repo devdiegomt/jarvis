@@ -38,7 +38,7 @@ SENDER = "local"
 FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE
 MAX_REQUEST_SECONDS = 15
 NO_SPEECH_SECONDS = 4  # si no empiezas a hablar en este tiempo tras el tono, se cancela
-END_SILENCE_SECONDS = 1.0  # silencio que marca el final del pedido
+END_SILENCE_SECONDS = 0.7  # silencio que marca el final del pedido (más largo = más espera)
 MIN_SPEECH_RMS = 300.0  # volumen mínimo (int16) para considerar que hay voz
 NOISE_FACTOR = 3.0  # la voz debe superar el ruido de fondo medido por este factor
 SPEAKING_TAIL_SECONDS = 0.3  # tras hablar, el micrófono sigue ignorado un instante (eco)
@@ -117,7 +117,9 @@ class PcVoiceChannel:
         if self._on_say is not None:
             self._on_say(text)
         try:
+            started = time.monotonic()
             pcm, sample_rate = self._speaker.synthesize(text)
+            logger.info("Voz generada en %.1f s.", time.monotonic() - started)
         except SpeechError as exc:
             raise ChannelError(str(exc)) from exc
         self.play(np.frombuffer(pcm, dtype=np.int16), sample_rate)
