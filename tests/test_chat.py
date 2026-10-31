@@ -588,3 +588,20 @@ def test_extra_purges_run_daily(tmp_path: Path) -> None:
     setup.process()
 
     assert calls == ["x"]  # una vez al día, no en cada mensaje
+
+
+def test_api_errors_are_logged_with_their_reason(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    import httpx2 as httpx
+
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": "tools.0: invalid tool"}}
+    error = anthropic.BadRequestError("bad", response=httpx.Response(400, request=request), body=body)
+    setup = Setup(tmp_path, [error])
+
+    with caplog.at_level("ERROR", logger="jarvis.chat"):
+        setup.message("Hola")
+        setup.process()
+
+    assert setup.channel.sent == [AI_ERROR_TEXT]
+    assert "BadRequestError 400: tools.0: invalid tool" in caplog.text
+    assert "Hola" not in caplog.text  # nunca el contenido del mensaje

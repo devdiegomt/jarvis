@@ -367,7 +367,7 @@ class ChatService:
             logger.info("Respuesta de la IA en %.1f s%s.", time.monotonic() - started, note)
             return reply, list(getattr(agent, "last_sources", []))
         except anthropic.APIError as exc:
-            logger.error("Error de la API de Anthropic (%s).", type(exc).__name__)
+            logger.error("Error de la API de Anthropic: %s", describe_api_error(exc))
             return AI_ERROR_TEXT, []
         finally:
             conversation.messages = agent.history
@@ -452,6 +452,20 @@ class ChatService:
             self._channel.send_text(to, text)
         except ChannelError as exc:
             logger.error("Tampoco se pudo enviar el aviso de error: %s", exc)
+
+
+def describe_api_error(exc: anthropic.APIError) -> str:
+    """Tipo, código y motivo que da la API (por ejemplo, "BadRequestError 400: …"), para el registro.
+
+    El motivo describe la petición (parámetros, límites), no el contenido de los mensajes; aun así se
+    recorta, por si acaso.
+    """
+    status = getattr(exc, "status_code", None)
+    body = getattr(exc, "body", None)
+    error = body.get("error") if isinstance(body, dict) else None
+    reason = error.get("message") if isinstance(error, dict) else getattr(exc, "message", "")
+    head = f"{type(exc).__name__} {status}" if status else type(exc).__name__
+    return f"{head}: {str(reason or '')[:200]}".rstrip(": ")
 
 
 def format_sources(sources: Sequence[tuple[str, str]]) -> str:
