@@ -15,6 +15,8 @@ from pathlib import Path
 from jarvis.agenda import CalendarError, CalendarSource, Meeting
 from jarvis.chat import ChannelError, ChatChannel
 from jarvis.config import ProactiveSettings
+from jarvis.gmail_reader import Email, GmailReader, MailError, MailNotAuthorizedError, watched_query
+from jarvis.mail_watch import WatchList
 from jarvis.summary import format_spanish_date
 from jarvis.tasks import TaskStore
 
@@ -23,6 +25,8 @@ CALENDAR_REFRESH = timedelta(minutes=5)  # el calendario se consulta cada 5 minu
 EVENING_DAYS = (6, 0, 1, 2, 3)  # domingo a jueves: el día siguiente es laboral
 RETENTION = timedelta(days=30)
 MAX_ATTENDEES_SHOWN = 3
+MAIL_LOOKBACK = timedelta(hours=24)  # tras mucho tiempo apagado, solo los correos del último día
+MAX_SNIPPET_CHARS = 200
 
 logger = logging.getLogger("jarvis.chat")
 
@@ -51,6 +55,15 @@ class NoticeLog:
                 (key, sent_at.astimezone(UTC).isoformat(timespec="seconds")),
             )
 
+    def first_seen(self, key: str, now: datetime) -> datetime:
+        """Cuándo se anotó `key` por primera vez (y lo anota ahora si es la primera)."""
+        with closing(self._connect()) as conn, conn:
+            row = conn.execute("SELECT sent_at FROM sent_notices WHERE key = ?", (key,)).fetchone()
+            if row is not None:
+                return datetime.fromisoformat(row[0])
+        self.record(key, now)
+        return now
+
     def purge_old(self, now: datetime) -> int:
         cutoff = (now - RETENTION).astimezone(UTC).isoformat(timespec="seconds")
         with closing(self._connect()) as conn, conn:
@@ -75,8 +88,16 @@ class ProactiveNotifier:
         log: NoticeLog,
         timezone: tzinfo,
         now: Callable[[], datetime],
+        mail: GmailReader | None = None,
+        watched: WatchList | None = None,
+        mail_interval: timedelta = timedelta(minutes=2),
     ) -> None:
         self._calendar = calendar
+        self._mail = mail
+        self._watched = watched
+        self._mail_interval = mail_interval
+        self._mail_checked_at: datetime | None = None
+        self._mail_warned = False
         self._tasks = tasks
         self._channel = channel
         self._owner = owner
@@ -90,7 +111,8 @@ class ProactiveNotifier:
 
     @property
     def enabled(self) -> bool:
-        return self._settings.meeting_lead_minutes > 0 or self._settings.evening_time is not None
+        mail = self._mail is not None and self._watched is not None
+        return mail or self._settings.meeting_lead_minutes > 0 or self._settings.evening_time is not None
 
     def check(self) -> int:
         """Una revisión: envía los avisos que toca. Devuelve cuántos se enviaron."""
@@ -99,6 +121,8 @@ class ProactiveNotifier:
             sent += self._meeting_alerts()
         if self._settings.evening_time is not None:
             sent += self._evening_preview()
+        if self._mail is not None and self._watched is not None:
+            sent += self._mail_alerts(self._mail, self._watched)
         self._purge_if_due()
         return sent
 
@@ -161,6 +185,38 @@ class ProactiveNotifier:
         text = evening_preview(tomorrow, meetings, [t.text for t in self._tasks.due_by(tomorrow)])
         return 1 if self._send_once(key, text) else 0
 
+    # --- Correos de clientes -------------------------------------------------
+
+    def _mail_alerts(self, mail: GmailReader, watched: WatchList) -> int:
+        now = self._now()
+        if self._mail_checked_at is not None and now - self._mail_checked_at < self._mail_interval:
+            return 0
+        self._mail_checked_at = now
+        patterns = watched.all()
+        if not patterns:
+            return 0
+        # Al activar los avisos no se avisa de correos viejos: solo de los que lleguen desde entonces.
+        started = self._log.first_seen("correo:inicio", now)
+        since = max(started, now - MAIL_LOOKBACK)
+        try:
+            emails = mail.search(watched_query(patterns, after=since - timedelta(minutes=1)), max_results=20)
+        except MailNotAuthorizedError as exc:
+            if not self._mail_warned:  # una vez, no cada 2 minutos
+                logger.warning("Avisos de correo en pausa: %s", exc)
+                self._mail_warned = True
+            return 0
+        except MailError as exc:
+            logger.warning("No se pudo revisar el correo: %s", exc)
+            return 0
+        sent = 0
+        for email in sorted(emails, key=lambda e: e.received_at):
+            watched_since = watched.watched_since(email.sender_email)
+            if watched_since is None or email.received_at < max(since, watched_since):
+                continue
+            if self._send_once(f"correo:{email.id}", mail_alert(email)):
+                sent += 1
+        return sent
+
     # --- Envío ---------------------------------------------------------------
 
     def _send_once(self, key: str, text: str) -> bool:
@@ -198,6 +254,19 @@ def meeting_alert(meeting: Meeting, now: datetime) -> str:
         lines.append(f"📍 {meeting.location}")
     if meeting.link:
         lines.append(f"🔗 {meeting.link}")
+    return "\n".join(lines)
+
+
+def mail_alert(email: Email) -> str:
+    who = email.sender_email if email.sender_name in ("", email.sender_email) else (
+        f"{email.sender_name} ({email.sender_email})"
+    )
+    snippet = email.snippet
+    if len(snippet) > MAX_SNIPPET_CHARS:
+        snippet = snippet[:MAX_SNIPPET_CHARS] + "…"
+    lines = [f"📧 Correo de {who}", f"«{email.subject}»"]
+    if snippet:
+        lines.append(snippet)
     return "\n".join(lines)
 
 

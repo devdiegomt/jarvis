@@ -14,7 +14,9 @@ import anthropic
 from jarvis.agent import Agent
 from jarvis.agenda import CalendarSource
 from jarvis.config import Settings
+from jarvis.gmail_reader import GmailReader, gmail_read_service_factory
 from jarvis.long_term_memory import MemoryStore
+from jarvis.mail_watch import WatchList
 from jarvis.memory import ConversationStore
 from jarvis.reminders import ReminderStore
 from jarvis.speech import Speaker, build_speaker
@@ -35,6 +37,8 @@ class Assistant:
     transcriber: Transcriber | None
     speaker: Speaker | None
     anthropic_client: anthropic.Anthropic
+    watched: WatchList
+    mail: GmailReader | None  # None si los avisos de correo están apagados o Google no está autorizado
 
     def agent_factory(self, history: list, system_prompt: str, confirm: Confirmer) -> Agent:
         return Agent(
@@ -47,6 +51,8 @@ class Assistant:
                 tasks=self.tasks,
                 memories=self.memories,
                 web=self.settings.web,
+                watched=self.watched,
+                mail=self.mail,
             ),
             model=self.settings.model,
             system_prompt=system_prompt,
@@ -84,4 +90,14 @@ def build_assistant(settings: Settings, calendar: CalendarSource) -> Assistant:
         transcriber=build_transcriber(settings.voice),
         speaker=build_speaker(settings.speech),
         anthropic_client=anthropic.Anthropic(api_key=settings.api_key),
+        watched=WatchList(db_path),
+        mail=build_mail_reader(settings),
     )
+
+
+def build_mail_reader(settings: Settings) -> GmailReader | None:
+    """Lector de Gmail, si los avisos de correo están activos y Google está autorizado."""
+    token_file = settings.google.token_file
+    if not settings.mail.enabled or not token_file.exists():
+        return None
+    return GmailReader(gmail_read_service_factory(token_file), settings.timezone)

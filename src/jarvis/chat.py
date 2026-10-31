@@ -20,6 +20,7 @@ import anthropic
 from jarvis.agent import Agent
 from jarvis.confirmation import parse_yes_no
 from jarvis.long_term_memory import MemoryStore
+from jarvis.mail_watch import WatchList
 from jarvis.memory import Conversation, ConversationStore
 from jarvis.speech import Speaker, SpeechError, SpeechUnavailableError
 from jarvis.tools import Confirmer
@@ -37,7 +38,8 @@ HELP_TEXT = (
     "Pregúntame, por ejemplo: «¿Qué tengo hoy?» o «Recuérdame a las 5 llamar a Laura». "
     "También entiendo notas de voz.\n\n"
     "/nuevo: empezar una conversación nueva\n/voz: elegir cuándo te respondo con voz\n"
-    "/memoria: ver lo que recuerdo de ti\n/ayuda: ver esta ayuda"
+    "/memoria: ver lo que recuerdo de ti\n/clientes: ver de quién te aviso cuando llega un correo\n"
+    "/ayuda: ver esta ayuda"
 )
 NEW_CONVERSATION_TEXT = "Listo, empezamos una conversación nueva."
 ONLY_TEXT_TEXT = "Por ahora entiendo mensajes de texto y notas de voz."
@@ -51,6 +53,11 @@ NO_MEMORIES_TEXT = (
     "Aún no recuerdo nada de ti. Cuéntame cosas que quieras que tenga presentes "
     "(personas, preferencias, rutinas) y las iré anotando."
 )
+NO_WATCHED_TEXT = (
+    "Todavía no te aviso de ningún correo. Dime, por ejemplo, «avísame de los correos de "
+    "laura@acme.com» o «…de todo acme.com»."
+)
+WATCHED_FOOTER = "Para quitar uno, dime «deja de avisarme de …»."
 MEMORIES_FOOTER = "Para que olvide algo, dime por ejemplo «olvida el {id}»."
 SPEECH_DISABLED_TEXT = "Las respuestas con voz están desactivadas (JARVIS_RESPUESTA_VOZ=no)."
 
@@ -81,6 +88,7 @@ COMMANDS = {
     "nuevo": "Conversación nueva",
     "voz": "Elegir cuándo responder con voz",
     "memoria": "Ver lo que JARVIS recuerda de ti",
+    "clientes": "Ver de quién te aviso cuando llega un correo",
     "ayuda": "Ver la ayuda",
 }
 
@@ -171,6 +179,7 @@ class ChatService:
         memories: MemoryStore | None = None,
         purges: Sequence[Callable[[], int]] = (),
         show_sources: bool = True,
+        watched: WatchList | None = None,
     ) -> None:
         """`purges`: limpiezas diarias adicionales (por ejemplo, pendientes hechos hace tiempo)."""
         self._channel = channel
@@ -180,6 +189,7 @@ class ChatService:
         self._memories = memories
         self._purges = purges
         self._show_sources = show_sources  # enlaces de las fuentes de internet al final del texto
+        self._watched = watched
         self._speech_warned = False  # el aviso de "voz no disponible" se envía una sola vez
         self._store = store
         self._agent_factory = agent_factory
@@ -243,6 +253,9 @@ class ChatService:
         if command == "/memoria" and self._memories is not None:
             self._channel.send_text(message.sender, self._memories_text())
             return
+        if command == "/clientes" and self._watched is not None:
+            self._channel.send_text(message.sender, self._watched_text())
+            return
 
         self._show_typing(message.sender)
         conversation = self._store.load_active(self._channel.name, message.sender, self._system_prompt)
@@ -296,6 +309,15 @@ class ChatService:
             return None
         self._channel.send_text(sender, HEARD_TEMPLATE.format(text))
         return text
+
+    def _watched_text(self) -> str:
+        """De quién se avisa cuando llega un correo, sin pasar por la IA."""
+        assert self._watched is not None
+        patterns = self._watched.all()
+        if not patterns:
+            return NO_WATCHED_TEXT
+        lines = "\n".join(f"- {pattern}" for pattern in patterns)
+        return f"Te aviso cuando llega un correo de:\n{lines}\n\n{WATCHED_FOOTER}"
 
     def _memories_text(self) -> str:
         """Lo que JARVIS recuerda, sin pasar por la IA."""

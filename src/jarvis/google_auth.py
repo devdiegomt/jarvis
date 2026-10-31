@@ -17,12 +17,15 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+# Leer correos (para los avisos de clientes): no permite enviar, borrar ni modificar nada.
+GMAIL_READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 
 SCOPE_DESCRIPTIONS = {
     CALENDAR_EVENTS_SCOPE: (
         "ver y editar los eventos de tu calendario (siempre te pedirá confirmación antes de cambiar algo)"
     ),
     CALENDAR_SCOPE: "leer tu calendario",
+    GMAIL_READ_SCOPE: "leer tus correos (sin enviar, borrar ni modificar nada; para avisarte de tus clientes)",
     GMAIL_SEND_SCOPE: "enviar correos en tu nombre (JARVIS solo te envía el resumen diario)",
 }
 

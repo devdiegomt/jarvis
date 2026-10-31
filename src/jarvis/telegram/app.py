@@ -10,6 +10,7 @@ import os
 import sys
 import threading
 import time
+from datetime import timedelta
 from typing import Any, NoReturn
 
 from jarvis.agenda import CalendarSource, build_calendar
@@ -74,13 +75,16 @@ def run_telegram(scheduled: bool = False) -> None:
         store=assistant.conversations,
         agent_factory=assistant.agent_factory,
         # Se llama solo al empezar una conversación: la memoria entra al día en cada conversación nueva.
-        system_prompt=lambda: build_chat_system_prompt(now().date(), memories.all(), settings.web),
+        system_prompt=lambda: build_chat_system_prompt(
+            now().date(), memories.all(), settings.web, mail=assistant.mail is not None
+        ),
         now=now,
         button_handler=delivery.handle_button,
         transcriber=assistant.transcriber,
         speaker=assistant.speaker,
         memories=memories,
         purges=[assistant.tasks.purge_old],
+        watched=assistant.watched,
     )
     poller = TelegramPoller(
         client, telegram.owner_id, deliver=chat.submit, mark_processed=assistant.conversations.mark_processed
@@ -96,6 +100,9 @@ def run_telegram(scheduled: bool = False) -> None:
         log=NoticeLog(settings.summary.db_path),
         timezone=settings.timezone,
         now=now,
+        mail=assistant.mail,
+        watched=assistant.watched,
+        mail_interval=timedelta(minutes=settings.mail.check_minutes),
     )
     if notifier.enabled:
         threading.Thread(target=notifier.run_forever, name="jarvis-avisos", daemon=True).start()

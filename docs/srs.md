@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.3 (cubre hasta la v0.13)
+- **Versión del documento:** 2.4 (cubre hasta la v0.14)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -15,7 +15,7 @@ Las decisiones de diseño (el *cómo*) están en los ADR de [`docs/adr/`](adr/).
 ### 1.2 Alcance
 
 JARVIS es un asistente personal con IA que ayuda a una persona a organizar su día: consulta sus
-reuniones, le envía un resumen diario y conversa con ella por consola y por Telegram, por escrito o
+reuniones, le avisa de los correos de sus clientes, le envía un resumen diario y conversa con ella por consola y por Telegram, por escrito o
 con notas de voz. Se construye
 en versiones pequeñas (ver el roadmap en [`CLAUDE.md`](../CLAUDE.md)).
 
@@ -221,6 +221,19 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   apaga), JARVIS envía una vez un vistazo a mañana: reuniones y pendientes que vencen.
 - **RF-64.** `estado` muestra qué avisos están activos.
 
+### v0.14: correos de clientes
+
+- **RF-65.** El usuario arma, hablando con JARVIS, una lista de contactos vigilados (direcciones o
+  dominios enteros) y la ve con `/clientes`; agregar o quitar no pide confirmación.
+- **RF-66.** Cuando llega un correo de un contacto vigilado, JARVIS avisa por Telegram con remitente,
+  asunto y un fragmento, revisando cada `JARVIS_CORREO_MINUTOS` (2 por defecto; `JARVIS_CORREO=no` lo apaga).
+- **RF-67.** Cada correo se avisa una sola vez, aunque JARVIS se reinicie; nunca se avisa de correos
+  anteriores a la activación de los avisos o a la incorporación del contacto, ni de más de 24 horas atrás.
+- **RF-68.** El usuario pide buscar y leer sus correos ("¿qué me escribió Laura esta semana?") y
+  JARVIS los resume; lo que dice un correo se trata como información, nunca como instrucciones.
+- **RF-69.** Sin el permiso de lectura de Gmail, JARVIS sigue funcionando, pausa los avisos de correo
+  y `estado` explica cómo darlo.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -228,7 +241,8 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RNF-01.** Ninguna credencial (API keys, tokens, secretos) está en el código ni en el repositorio:
   van en `.env` o en `~/.config/jarvis/`, ignorados por git. `.env.example` lista los nombres sin valores.
 - **RNF-02.** Permiso mínimo en cada servicio: `calendar.events` (ver y editar eventos, no
-  calendarios); `gmail.send` solo si el resumen va por Gmail.
+  calendarios); `gmail.readonly` (leer, sin enviar, borrar ni modificar) solo para los avisos de
+  correo; `gmail.send` solo si el resumen va por Gmail.
 - **RNF-03.** Los tokens OAuth se guardan con permisos de archivo solo para el usuario.
 - **RNF-04.** JARVIS no abre puertos en el PC: recibe los mensajes de Telegram consultando su API
   (long polling). El token del bot nunca aparece en logs ni en mensajes de error.
@@ -259,6 +273,9 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   en bloques de 80 ms y se descarta; solo el pedido que sigue a la palabra de activación se graba,
   en memoria, para transcribirlo en el PC. Nada se escribe en disco ni sale del equipo, y los
   registros solo anotan activaciones y duraciones. Mientras JARVIS habla, el micrófono se ignora.
+- **RNF-08h.** Los correos no se guardan en el equipo: la lista de contactos vigilados y los IDs de
+  los correos ya avisados (30 días) son lo único que queda en `jarvis.db`. Los registros no contienen
+  remitentes, asuntos ni texto de correos.
 
 ### 4.3 Fiabilidad y rapidez
 
@@ -302,7 +319,7 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 ## 5. Fuera de alcance (por ahora)
 
 - Leer los chats personales del usuario (WhatsApp, Telegram) o escribir desde su cuenta.
-- Enviar mensajes reales a terceros: `enviar_mensaje` sigue simulada.
+- Enviar mensajes reales a terceros: `enviar_mensaje` sigue simulada; JARVIS no responde correos.
 - Invitar a otras personas a los eventos, eventos de día completo o recurrentes creados por JARVIS.
 - Imágenes o archivos en el chat; otras voces en la nube (por ejemplo, ElevenLabs).
 - WhatsApp como canal (retirado en la v0.5; ver ADR 004 y ADR 005).
@@ -326,4 +343,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-53 a RF-56 | `tools/internet.py`, `tools/registry.py`, `agent.py`, `chat.py`, `prompts.py`, `config.py`, `status.py` | `test_internet.py` |
 | RF-57 a RF-60 | `tools/calendario.py`, `agenda/`, `google_auth.py`, `tools/registry.py`, `status.py`, `cli.py` | `test_calendar_writing.py` |
 | RF-61 a RF-64 | `proactive.py`, `agenda/google.py`, `config.py`, `telegram/app.py`, `status.py` | `test_proactive.py` |
+| RF-65 a RF-69 | `mail_watch.py`, `gmail_reader.py`, `tools/correo.py`, `proactive.py`, `chat.py`, `prompts.py`, `google_auth.py`, `status.py` | `test_mail.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

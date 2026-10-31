@@ -128,6 +128,14 @@ class ProactiveSettings:
 
 
 @dataclass(frozen=True)
+class MailSettings:
+    """Avisos de correos de clientes (Gmail, solo lectura). `check_minutes`: cada cuánto se revisa."""
+
+    enabled: bool = True
+    check_minutes: int = 2
+
+
+@dataclass(frozen=True)
 class Settings:
     api_key: str
     model: str
@@ -141,6 +149,7 @@ class Settings:
     wake_word: WakeWordSettings
     web: WebSettings
     proactive: ProactiveSettings = ProactiveSettings()
+    mail: MailSettings = MailSettings()
 
 
 def read_env() -> Mapping[str, str]:
@@ -170,6 +179,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         wake_word=load_wake_word_settings(env),
         web=load_web_settings(env),
         proactive=load_proactive_settings(env),
+        mail=load_mail_settings(env),
     )
 
 
@@ -316,6 +326,20 @@ def load_proactive_settings(env: Mapping[str, str]) -> ProactiveSettings:
         assert default is not None
         evening_time = _load_time(env, "JARVIS_VISTAZO_MANANA", default)
     return ProactiveSettings(meeting_lead_minutes=lead, evening_time=evening_time)
+
+
+def load_mail_settings(env: Mapping[str, str]) -> MailSettings:
+    value = (_get(env, "JARVIS_CORREO") or "si").lower()
+    if value not in ("si", "sí", "no"):
+        raise ConfigError(f"JARVIS_CORREO='{value}' no es válido. Opciones: si, no.")
+    raw_minutes = _get(env, "JARVIS_CORREO_MINUTOS")
+    try:
+        minutes = int(raw_minutes) if raw_minutes else MailSettings.check_minutes
+    except ValueError:
+        minutes = 0
+    if not 1 <= minutes <= 60:
+        raise ConfigError(f"JARVIS_CORREO_MINUTOS='{raw_minutes}' no es válido: usa un número de 1 a 60.")
+    return MailSettings(enabled=value != "no", check_minutes=minutes)
 
 
 def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:
