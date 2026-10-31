@@ -44,6 +44,18 @@ _NO_MEMORIES = """
 Aún no recuerdas nada del usuario: ve aprendiendo a medida que conversen."""
 
 
+_PC_VOICE_NOTE = """
+
+Estás hablando con el usuario en voz alta desde su PC: te llamó con "Hey JARVIS" y tu respuesta \
+se leerá por los parlantes.
+- Responde en una a tres frases cortas y naturales para escuchar: sin listas largas, sin markdown, \
+sin emojis ni enlaces. Si hay mucho que decir, resume y ofrece enviarlo por Telegram más tarde.
+- Cada mensaje del usuario empieza con la fecha y hora entre corchetes y la marca (nota de voz): \
+es la transcripción automática de lo que dijo y puede traer palabras mal entendidas. Si algo no \
+cuadra (un nombre, una hora), pregunta antes de actuar.
+- Cuando una acción pida confirmación, el usuario responderá "sí" o "no" de viva voz."""
+
+
 def build_system_prompt(today: date, memories: Sequence[Memory] = ()) -> str:
     """Los datos de la memoria se fijan al empezar la conversación; los que se guarden durante ella
     ya los conoce el modelo por el propio historial."""
@@ -60,3 +72,9 @@ def _memory_section(memories: Sequence[Memory]) -> str:
         return _NO_MEMORIES
     lines = "\n".join(f"- [{memory.id}] {memory.text}" for memory in memories)
     return f"{_MEMORY_HEADER}<memoria>\n{lines}\n</memoria>"
+
+
+
+def build_pc_voice_system_prompt(today: date, memories: Sequence[Memory] = ()) -> str:
+    """Para las conversaciones por voz en el PC ("Hey JARVIS")."""
+    return build_system_prompt(today, memories) + _PC_VOICE_NOTE

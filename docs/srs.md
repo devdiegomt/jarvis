@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.7 (cubre hasta la v0.9)
+- **Versión del documento:** 1.8 (cubre hasta la v0.10)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -164,6 +164,20 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-44.** `/memoria` muestra todo lo que JARVIS recuerda, sin consultar la IA.
 - **RF-45.** `jarvis estado` muestra cuántos pendientes y datos de memoria hay (sin su texto).
 
+### v0.10: "Hey JARVIS" en el PC
+
+- **RF-46.** Con `JARVIS_PALABRA_ACTIVACION=si`, JARVIS en segundo plano escucha el micrófono del PC
+  y, al oír "Hey JARVIS", suena un tono, graba el pedido hasta que el usuario se calla (máximo 15 s),
+  lo transcribe y responde en voz alta por los parlantes.
+- **RF-47.** Las conversaciones por voz en el PC usan las mismas tools, memoria, pendientes y
+  recordatorios que Telegram, en conversaciones propias; las confirmaciones se preguntan en voz alta
+  y se responden "sí" o "no" de viva voz (sin respuesta, se cancela).
+- **RF-48.** Si no se oye nada o no se entiende, JARVIS lo dice en voz alta; si falta algo (voz,
+  transcripción, modelos, micrófono), el resto de JARVIS sigue funcionando y queda en el registro.
+- **RF-49.** `jarvis escuchar` prueba "Hey JARVIS" en primer plano mostrando lo que pasa;
+  `preparar-voz` descarga sus modelos; `JARVIS_ACTIVACION_UMBRAL` ajusta la sensibilidad y `estado`
+  muestra si está activo.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -196,6 +210,10 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   Los pendientes hechos se borran a los 30 días. Los registros no contienen el texto de ninguno.
 - **RNF-08f.** La memoria tiene un tope (200 datos de hasta 300 caracteres) y entra en el system prompt
   solo al empezar una conversación, sin editar el historial de la conversación en curso.
+- **RNF-08g.** "Hey JARVIS" está apagado por defecto. El audio del micrófono se analiza en memoria
+  en bloques de 80 ms y se descarta; solo el pedido que sigue a la palabra de activación se graba,
+  en memoria, para transcribirlo en el PC. Nada se escribe en disco ni sale del equipo, y los
+  registros solo anotan activaciones y duraciones. Mientras JARVIS habla, el micrófono se ignora.
 
 ### 4.3 Fiabilidad
 
@@ -247,4 +265,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-32 a RF-36 | `voice.py`, `chat.py`, `telegram/`, `confirmation.py`, `cli.py`, `status.py` | `test_voice.py`, `test_chat.py`, `test_telegram.py`, `test_confirmation.py`, `test_status.py` |
 | RF-37 a RF-40 | `speech.py`, `chat.py`, `memory.py`, `telegram/client.py`, `cli.py`, `status.py` | `test_speech.py`, `test_chat.py`, `test_memory.py`, `test_telegram.py`, `test_status.py` |
 | RF-41 a RF-45 | `tasks.py`, `long_term_memory.py`, `tools/pendientes.py`, `tools/memoria.py`, `prompts.py`, `chat.py`, `summary.py`, `status.py` | `test_tasks.py`, `test_long_term_memory.py`, `test_chat.py`, `test_status.py` |
+| RF-46 a RF-49 | `wake_word.py`, `pc_voice.py`, `assistant.py`, `prompts.py`, `telegram/app.py`, `cli.py`, `status.py` | `test_pc_voice.py`, `test_status.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

@@ -7,7 +7,8 @@
 - `uv run jarvis telegram`: chatear con JARVIS por Telegram.
 - `uv run jarvis telegram-vincular`: obtener tu ID de Telegram (TELEGRAM_OWNER_ID).
 - `uv run jarvis programar-telegram` / `quitar-telegram`: JARVIS en segundo plano al iniciar sesión.
-- `uv run jarvis preparar-voz`: descarga el modelo de Whisper y la voz de Piper (notas de voz).
+- `uv run jarvis preparar-voz`: descarga el modelo de Whisper, la voz de Piper y los modelos de "Hey JARVIS".
+- `uv run jarvis escuchar`: prueba "Hey JARVIS" en el PC, mostrando en la consola lo que pasa.
 - `uv run jarvis estado`: configuración, tareas programadas y registros.
 """
 
@@ -25,11 +26,13 @@ from jarvis.config import (
     ConfigError,
     SpeechSettings,
     VoiceSettings,
+    WakeWordSettings,
     load_google_settings,
     load_settings,
     load_speech_settings,
     load_summary_settings,
     load_voice_settings,
+    load_wake_word_settings,
     read_env,
 )
 from jarvis.confirmation import CONFIRMATION_QUESTION, parse_yes_no
@@ -153,10 +156,13 @@ def run_google_login() -> None:
 
 
 def run_prepare_voice() -> None:
-    """`jarvis preparar-voz`: descarga una sola vez el modelo de Whisper y la voz de Piper."""
+    """`jarvis preparar-voz`: descarga una sola vez el modelo de Whisper, la voz de Piper y los
+    modelos de "Hey JARVIS" (estos, aunque la palabra de activación esté apagada: pesan poco y así
+    se puede probar con `escuchar`)."""
     try:
         env = read_env()
         voice, speech = load_voice_settings(env), load_speech_settings(env)
+        wake = load_wake_word_settings(env)
     except ConfigError as exc:
         print(f"Error de configuración: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -169,6 +175,7 @@ def run_prepare_voice() -> None:
         ok = _prepare_transcription(voice) and ok
     if speech.enabled:
         ok = _prepare_speech(speech) and ok
+        ok = _prepare_wake_word(wake) and ok
     if not ok:
         sys.exit(1)
     print("\nListo. Envíale una nota de voz a tu bot para probarlo.")
@@ -216,6 +223,59 @@ def _prepare_speech(speech: SpeechSettings) -> bool:
     return True
 
 
+def _prepare_wake_word(wake: WakeWordSettings) -> bool:
+    """Descarga los modelos de "Hey JARVIS" (unos 4 MB). False si falló."""
+    from jarvis.wake_word import (
+        INSTALL_HINT,
+        WakeWordDownloadError,
+        download_wake_models,
+        wake_models_downloaded,
+        wake_word_installed,
+    )
+
+    if not wake_word_installed():
+        print(f"Falta instalar la palabra de activación: ejecuta {INSTALL_HINT}.", file=sys.stderr)
+        return False
+    if wake_models_downloaded(wake.models_dir):
+        print(f"Los modelos de «Hey JARVIS» ya están descargados en {wake.models_dir}.")
+        return True
+    print("Descargando los modelos de «Hey JARVIS» (unos 4 MB)…")
+    try:
+        download_wake_models(wake.models_dir)
+    except WakeWordDownloadError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return False
+    print(f"Modelos guardados en {wake.models_dir}.")
+    return True
+
+
+def run_listen() -> None:
+    """`jarvis escuchar`: prueba "Hey JARVIS" en primer plano, mostrando en la consola lo que pasa."""
+    from jarvis.assistant import build_assistant
+    from jarvis.pc_voice import start_pc_voice
+
+    try:
+        settings = load_settings()
+        calendar = build_calendar(settings)
+    except ConfigError as exc:
+        print(f"Error de configuración: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if settings.wake_word.enabled:
+        print(
+            "Ojo: si JARVIS corre en segundo plano con JARVIS_PALABRA_ACTIVACION=si, también te responderá.\n"
+            "Para probar solo aquí, detenlo antes con `uv run python -m jarvis quitar-telegram`.\n"
+        )
+    thread = start_pc_voice(build_assistant(settings, calendar), console=True)
+    if thread is None:
+        sys.exit(1)
+    print("👂 Escuchando. Di «Hey JARVIS» y luego tu pedido. Ctrl+C para salir.\n")
+    try:
+        while thread.is_alive():
+            thread.join(timeout=0.5)  # con timeout, para que Ctrl+C funcione también en Windows
+    except KeyboardInterrupt:
+        print("\nHasta luego.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS, tu asistente personal.")
     commands = parser.add_subparsers(dest="command")
@@ -234,6 +294,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("programar-telegram", help="Arranca JARVIS en segundo plano al iniciar sesión.")
     commands.add_parser("quitar-telegram", help="Detiene JARVIS en segundo plano y quita el arranque.")
     commands.add_parser("preparar-voz", help="Descarga lo necesario para entender y responder con voz.")
+    commands.add_parser("escuchar", help="Prueba «Hey JARVIS» en el PC (micrófono y parlantes).")
     commands.add_parser("estado", help="Muestra la configuración, las tareas programadas y los registros.")
     return parser
 
@@ -267,6 +328,8 @@ def main(argv: list[str] | None = None) -> None:
         run_schedule_remove()
     elif args.command == "preparar-voz":
         run_prepare_voice()
+    elif args.command == "escuchar":
+        run_listen()
     elif args.command == "estado":
         from jarvis.status import run_status
 

@@ -8,10 +8,11 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.9**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
-segundo plano) escribiéndole o con notas de voz, y te responde también con voz; te crea
-recordatorios, lleva tu lista de pendientes, recuerda lo que le cuentas de ti entre conversaciones y
-te envía un resumen del día de lunes a viernes (por Telegram o Gmail). El envío de mensajes a
+**v0.10**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
+segundo plano) escribiéndole o con notas de voz, y te responde también con voz; en el PC lo llamas
+con "Hey JARVIS" y te contesta en voz alta. Te crea recordatorios, lleva tu lista de pendientes,
+recuerda lo que le cuentas de ti entre conversaciones y te envía un resumen del día de lunes a
+viernes (por Telegram o Gmail). El envío de mensajes a
 terceros sigue simulado.
 Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
 
@@ -296,6 +297,54 @@ elección se guarda.
 - Si `preparar-voz` falla con un error de certificados, es el mismo caso del antivirus que se
   explica en la sección de Telegram (la descarga es desde `huggingface.co`).
 
+## "Hey JARVIS" en el PC
+
+Habla con JARVIS sin tocar el teléfono: di **"Hey JARVIS"** cerca del PC, espera el tono (o sigue
+de corrido) y haz tu pedido: *"Hey JARVIS, ¿qué tengo hoy?"*, *"…recuérdame a las 5 llamar a
+Laura"*, *"…anota renovar el pasaporte"*. Te responde en voz alta por los parlantes, con la misma
+memoria, pendientes, recordatorios y calendario que en Telegram. Si una acción necesita tu
+confirmación, te pregunta y respondes "sí" o "no".
+
+### Activarlo
+
+1. Descarga sus modelos (unos 4 MB; si ya ejecutaste `preparar-voz` antes, vuelve a hacerlo):
+
+   ```bash
+   uv run python -m jarvis preparar-voz
+   ```
+
+2. Pruébalo en primer plano. La consola muestra cuándo se activa, qué entendió y qué responde:
+
+   ```bash
+   uv run python -m jarvis escuchar
+   ```
+
+3. Si funciona bien, actívalo en segundo plano. Pon `JARVIS_PALABRA_ACTIVACION=si` en `.env` y
+   reinicia JARVIS (`quitar-telegram` y luego `programar-telegram`).
+
+Usa el micrófono y los parlantes predeterminados de Windows. Necesita las notas de voz y las
+respuestas con voz activas (son las que vienen por defecto).
+
+### Ajustes y problemas comunes
+
+- **Se activa sin que lo llames**: sube `JARVIS_ACTIVACION_UMBRAL` (por ejemplo, `0.7`).
+  **No se activa**: bájalo (por ejemplo, `0.3`) y di "Hey JARVIS" con claridad. La frase es en
+  inglés porque el modelo viene entrenado así; más adelante se podrá entrenar uno para "Oye JARVIS".
+- **"No te escuché"**: empieza a hablar en los 4 segundos siguientes al tono, o habla más cerca del
+  micrófono. El pedido termina cuando haces una pausa de un segundo (como máximo dura 15 s).
+- **No arranca**: `uv run python -m jarvis estado` dice qué falta. Si Windows bloquea alguna
+  biblioteca de audio ("Control de aplicaciones"), avísame con el mensaje exacto.
+- Si JARVIS corre en segundo plano con la palabra de activación, `escuchar` también lo tendrá
+  escuchando: para probar solo en primer plano, detén antes el de segundo plano.
+
+### Privacidad
+
+Viene **apagado**: el micrófono solo se usa si pones `JARVIS_PALABRA_ACTIVACION=si` (o mientras
+corre `escuchar`). El audio se analiza en memoria en trozos de 80 ms solo para detectar la frase y se
+descarta; solo se graba lo que dices después de "Hey JARVIS", también en memoria, para
+transcribirlo en tu PC. Nada se guarda en disco ni sale del equipo (salvo el texto de tu pedido, que
+va a Claude como cualquier mensaje). Windows muestra el ícono del micrófono en uso mientras escucha.
+
 ## Resumen diario
 
 JARVIS puede enviarte cada mañana, de lunes a viernes, tus reuniones del día y un comentario breve
@@ -395,6 +444,8 @@ texto de tus mensajes.
 | `JARVIS_WHISPER_MODELO` | Modelo de Whisper: `tiny`, `base`, `small`, `medium`, `large-v3-turbo`… | `small` |
 | `JARVIS_RESPUESTA_VOZ` | Respuestas con voz: `local` (Piper en el PC) o `no` (desactivadas) | `local` |
 | `JARVIS_PIPER_VOZ` | Voz de Piper (`<idioma>-<nombre>-<calidad>`) | `es_MX-ald-medium` |
+| `JARVIS_PALABRA_ACTIVACION` | "Hey JARVIS" en el PC, en segundo plano: `si` o `no` | `no` |
+| `JARVIS_ACTIVACION_UMBRAL` | Sensibilidad de "Hey JARVIS" (0 a 1; más alto, menos activaciones por error) | `0.5` |
 
 ## Tests
 

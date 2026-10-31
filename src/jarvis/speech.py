@@ -9,6 +9,7 @@ import importlib.util
 import io
 import logging
 import re
+import threading
 import unicodedata
 from collections.abc import Callable
 from pathlib import Path
@@ -66,20 +67,30 @@ class PiperSpeaker:
         self._load_voice = load_voice or _load_piper
         self._installed = installed or piper_installed
         self._voice: Any = None
+        # Telegram y el micrófono del PC pueden pedir voz a la vez desde hilos distintos.
+        self._lock = threading.Lock()
 
     def speak(self, text: str) -> bytes:
-        voice = self._get_voice()
+        pcm, sample_rate = self.synthesize(text)
         try:
-            chunks = list(voice.synthesize(spoken_text(text)))
-            pcm = b"".join(chunk.audio_int16_bytes for chunk in chunks)
-            if not pcm:
-                raise SpeechError("No hay nada que decir en voz alta.")
-            return encode_ogg_opus(pcm, chunks[0].sample_rate)
-        except SpeechError:
-            raise
-        except Exception as exc:  # fallo interno de la voz o del codificador: no debe tumbar el chat
-            logger.error("Falló la síntesis de voz (%s).", type(exc).__name__)
+            return encode_ogg_opus(pcm, sample_rate)
+        except Exception as exc:  # fallo del codificador: no debe tumbar el chat
+            logger.error("Falló la codificación de voz (%s).", type(exc).__name__)
             raise SpeechError("No pude generar la respuesta con voz.") from exc
+
+    def synthesize(self, text: str) -> tuple[bytes, int]:
+        """Audio PCM (16 bits, mono) y su frecuencia, para reproducirlo en los parlantes del PC."""
+        with self._lock:
+            voice = self._get_voice()
+            try:
+                chunks = list(voice.synthesize(spoken_text(text)))
+            except Exception as exc:  # fallo interno de la voz: no debe tumbar el chat
+                logger.error("Falló la síntesis de voz (%s).", type(exc).__name__)
+                raise SpeechError("No pude generar la respuesta con voz.") from exc
+        pcm = b"".join(chunk.audio_int16_bytes for chunk in chunks)
+        if not pcm:
+            raise SpeechError("No hay nada que decir en voz alta.")
+        return pcm, chunks[0].sample_rate
 
     def _get_voice(self) -> Any:
         if self._voice is not None:

@@ -11,6 +11,7 @@ solo responde que las notas de voz no están instaladas.
 import importlib.util
 import io
 import logging
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
@@ -67,16 +68,19 @@ class WhisperTranscriber:
         self._load_model = load_model or _load_whisper
         self._installed = installed or whisper_installed
         self._model: Any = None
+        # Telegram y el micrófono del PC pueden transcribir a la vez desde hilos distintos.
+        self._lock = threading.Lock()
 
     def transcribe(self, audio: bytes) -> str:
-        model = self._get_model()
-        try:
-            # `vad_filter` descarta los silencios, que es donde Whisper suele inventar frases.
-            segments, _info = model.transcribe(io.BytesIO(audio), language=LANGUAGE, vad_filter=True)
-            return " ".join(segment.text.strip() for segment in segments).strip()
-        except Exception as exc:  # audio dañado o fallo interno del modelo: no debe tumbar el chat
-            logger.error("Falló la transcripción (%s).", type(exc).__name__)
-            raise TranscriptionError("No pude transcribir la nota de voz. Inténtalo de nuevo.") from exc
+        with self._lock:
+            model = self._get_model()
+            try:
+                # `vad_filter` descarta los silencios, que es donde Whisper suele inventar frases.
+                segments, _info = model.transcribe(io.BytesIO(audio), language=LANGUAGE, vad_filter=True)
+                return " ".join(segment.text.strip() for segment in segments).strip()
+            except Exception as exc:  # audio dañado o fallo interno del modelo: no debe tumbar el chat
+                logger.error("Falló la transcripción (%s).", type(exc).__name__)
+                raise TranscriptionError("No pude transcribir el audio. Inténtalo de nuevo.") from exc
 
     def _get_model(self) -> Any:
         if self._model is not None:
