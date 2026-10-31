@@ -206,6 +206,7 @@ def to_meeting(event: dict[str, Any], timezone: tzinfo) -> Meeting | None:
         # Las invitaciones de otras personas no se mueven ni se cancelan desde JARVIS.
         "organized_by_me": bool(event.get("organizer", {}).get("self", False)),
         "recurring": "recurringEventId" in event,
+        "link": _video_link(event),
     }
 
     if "dateTime" in start:
@@ -221,6 +222,17 @@ def to_meeting(event: dict[str, Any], timezone: tzinfo) -> Meeting | None:
         all_day=True,
         **common,
     )
+
+
+def _video_link(event: dict[str, Any]) -> str | None:
+    """Enlace de la videollamada: Meet, otra conferencia de Google o un enlace puesto como lugar."""
+    if event.get("hangoutLink"):
+        return str(event["hangoutLink"])
+    for entry in event.get("conferenceData", {}).get("entryPoints", []):
+        if entry.get("entryPointType") == "video" and entry.get("uri"):
+            return str(entry["uri"])
+    location = str(event.get("location") or "")
+    return location if location.startswith("https://") else None
 
 
 def _declined_by_me(event: dict[str, Any]) -> bool:

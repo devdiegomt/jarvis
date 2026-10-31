@@ -8,7 +8,8 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.12**: lee tu Google Calendar y agenda, mueve o cancela tus eventos (siempre con tu
+**v0.13**: te avisa antes de cada reunión y te da un vistazo a mañana por la noche; lee tu Google
+Calendar y agenda, mueve o cancela tus eventos (siempre con tu
 confirmación), chateas con JARVIS por Telegram (también en
 segundo plano) escribiéndole o con notas de voz, y te responde también con voz; en el PC lo llamas
 con "Hey JARVIS" y te contesta en voz alta. Te crea recordatorios, lleva tu lista de pendientes,
@@ -225,6 +226,21 @@ llega al volver, marcado como atrasado.
 Los recordatorios se guardan en tu equipo (`jarvis.db`); los ya enviados o cancelados se borran a
 los 30 días. Crear o cancelar un recordatorio no pide confirmación: es interno a JARVIS y siempre
 se puede deshacer. `uv run jarvis estado` muestra cuántos hay pendientes y la hora del próximo.
+
+## Avisos
+
+JARVIS te escribe por su cuenta, por Telegram:
+
+- **Antes de cada reunión** (10 minutos antes, por defecto), con el horario, quiénes van, el lugar y
+  el enlace de Meet, Zoom o Teams si lo tiene. Cada reunión se avisa una sola vez; si la mueves, te
+  avisa a la hora nueva. No avisa de eventos de día completo ni tarde (si la reunión ya empezó,
+  por ejemplo porque el PC estaba apagado).
+- **Un vistazo a mañana**, de domingo a jueves a las 20:00: tus reuniones de mañana y los
+  pendientes que vencen.
+
+Se configuran en `.env`: `JARVIS_AVISO_REUNION=15` (minutos antes; `0` lo apaga) y
+`JARVIS_VISTAZO_MANANA=21:00` (o `no`). Los envía JARVIS en segundo plano, así que el PC debe estar
+encendido. `uv run python -m jarvis estado` muestra cuáles están activos.
 
 ## Agendar en el calendario
 
@@ -514,6 +530,8 @@ texto de tus mensajes.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | API key de Anthropic (obligatoria) | |
 | `JARVIS_MODEL` | Modelo de Claude | `claude-sonnet-5-5` |
+| `JARVIS_AVISO_REUNION` | Minutos antes de cada reunión para avisarte (`0` = sin aviso) | `10` |
+| `JARVIS_VISTAZO_MANANA` | Hora del vistazo a mañana, de domingo a jueves (`no` = sin vistazo) | `20:00` |
 | `JARVIS_BUSQUEDA` | Búsqueda en internet y lectura de enlaces: `si` o `no` | `si` |
 | `JARVIS_CIUDAD` / `JARVIS_PAIS` | Tu ciudad y país (código de dos letras), para búsquedas locales | |
 | `JARVIS_ESFUERZO` | Cuánto razona Claude en el chat y la voz: `low` (rápido), `medium`, `high`, `xhigh`, `max` | `low` |
