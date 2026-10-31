@@ -2,7 +2,7 @@
 
 import json
 import time as time_module
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TypeVar
@@ -19,6 +19,7 @@ from jarvis.agenda import (
 )
 from jarvis.notify import NotificationError, NotificationNotAuthorizedError, Notifier
 from jarvis.storage import SummaryLog
+from jarvis.tasks import Task, TaskStore
 
 HIGHLIGHTS_MAX_TOKENS = 4000
 
@@ -32,10 +33,11 @@ HIGHLIGHTS_PROMPT = """\
 Eres JARVIS, el asistente personal del usuario. Escribe el comentario inicial de su resumen \
 matutino por correo, en español.
 
-Recibirás las reuniones del día en JSON. En 2 a 4 frases destaca lo más importante: choques de \
-horario, huecos libres útiles y lo que convenga preparar. Escribe en texto plano, sin markdown, \
-sin viñetas, sin saludo ni despedida. No inventes nada que no esté en los datos. La lista completa \
-de reuniones se añade aparte: no la repitas."""
+Recibirás las reuniones del día y los pendientes que vencen hoy (o están atrasados) en JSON. En 2 \
+a 4 frases destaca lo más importante: choques de horario, huecos libres útiles (por ejemplo, para \
+avanzar en un pendiente) y lo que convenga preparar. Escribe en texto plano, sin markdown, sin \
+viñetas, sin saludo ni despedida. No inventes nada que no esté en los datos. Las listas completas \
+de reuniones y pendientes se añaden aparte: no las repitas."""
 
 NO_MEETINGS_NOTE = "Hoy no tienes reuniones en el calendario: buen día para avanzar en tus pendientes."
 FALLBACK_NOTE = "(Hoy no pude preparar el comentario del día; aquí tienes tu agenda.)"
@@ -55,14 +57,23 @@ def format_spanish_date(day: date) -> str:
 
 
 def build_summary(
-    day: date, meetings: list[Meeting], highlights: str | None, source_name: str
+    day: date,
+    meetings: list[Meeting],
+    highlights: str | None,
+    source_name: str,
+    tasks: Sequence[Task] = (),
 ) -> DailySummary:
-    """Arma el correo. La agenda se genera en código para que las horas sean siempre exactas."""
+    """Arma el correo. La agenda se genera en código para que las horas sean siempre exactas.
+
+    `tasks` son los pendientes que vencen ese día o están atrasados.
+    """
     count = len(meetings)
     if count == 0:
         count_text = "sin reuniones"
     else:
         count_text = f"{count} {'reunión' if count == 1 else 'reuniones'}"
+    if tasks:
+        count_text += f", {len(tasks)} {'pendiente' if len(tasks) == 1 else 'pendientes'}"
     subject = f"Tu día: {format_spanish_date(day)} ({count_text})"
 
     if not meetings:
@@ -71,22 +82,37 @@ def build_summary(
         note = highlights or FALLBACK_NOTE
         agenda = "\n\nAgenda:\n" + "\n".join(f"- {meeting_to_line(m)}" for m in meetings)
 
+    pending = ""
+    if tasks:
+        pending = "\n\nPendientes para hoy:\n" + "\n".join(f"- {task_to_line(t, day)}" for t in tasks)
+
     body = (
         f"Buenos días. Este es tu resumen del {format_spanish_date(day)}.\n\n"
-        f"{note}{agenda}\n\n"
+        f"{note}{agenda}{pending}\n\n"
         f"--\nJARVIS · Calendario: {source_name}"
     )
     return DailySummary(subject, body, count, ai_generated=bool(meetings and highlights))
 
 
+def task_to_line(task: Task, day: date) -> str:
+    if task.due_date is not None and task.due_date < day:
+        return f"{task.text} (atrasado: era para el {task.due_date:%d/%m})"
+    return task.text
+
+
 def write_highlights(
-    client: anthropic.Anthropic, model: str, day: date, meetings: list[Meeting]
+    client: anthropic.Anthropic,
+    model: str,
+    day: date,
+    meetings: list[Meeting],
+    tasks: Sequence[Task] = (),
 ) -> str | None:
     """Pide a Claude el comentario del día. Devuelve None si no se pudo generar."""
     payload = {
         "fecha": day.isoformat(),
         "dia": format_spanish_date(day),
         "reuniones": [meeting_to_dict(m) for m in meetings],
+        "pendientes": [task_to_line(t, day) for t in tasks],
     }
     try:
         response = client.messages.create(
@@ -113,6 +139,7 @@ def send_daily_summary(
     log: SummaryLog | None,
     now: Callable[[], datetime],
     force: bool = False,
+    tasks: TaskStore | None = None,
 ) -> DailySummary | None:
     """Genera y envía el resumen del día. Devuelve None si ya se había enviado.
 
@@ -121,8 +148,9 @@ def send_daily_summary(
     if log is not None and not force and log.was_sent(day):
         return None
     meetings = calendar.list_meetings(day, day)
-    highlights = write_highlights(client, model, day, meetings) if meetings else None
-    summary = build_summary(day, meetings, highlights, calendar.name)
+    due_tasks = tasks.due_by(day) if tasks is not None else []
+    highlights = write_highlights(client, model, day, meetings, due_tasks) if meetings else None
+    summary = build_summary(day, meetings, highlights, calendar.name, due_tasks)
     notifier.send(summary.subject, summary.body)
     if log is not None:
         log.record_sent(day, now())

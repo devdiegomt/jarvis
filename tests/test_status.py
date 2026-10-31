@@ -104,3 +104,31 @@ def test_speech_status_is_shown(isolated_config_dir: Path) -> None:
     text = report({**FULL_ENV, "JARVIS_RESPUESTA_VOZ": "no"}, None)
 
     assert "Respuestas con voz: desactivadas" in text
+
+
+def test_tasks_and_memory_are_counted_without_their_text(isolated_config_dir: Path) -> None:
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+
+    from jarvis.long_term_memory import MemoryStore
+    from jarvis.tasks import TaskStore
+
+    tz = ZoneInfo("America/Bogota")
+    db = isolated_config_dir / "jarvis.db"
+    tasks = TaskStore(db, now=lambda: datetime.now(tz))
+    tasks.add("Renovar el pasaporte", date(2020, 1, 1))
+    tasks.add("Algún día")
+    MemoryStore(db, now=lambda: datetime.now(tz)).add("Su socia se llama Laura.")
+
+    text = report({**FULL_ENV, "JARVIS_TIMEZONE": "America/Bogota"}, None)
+
+    assert "Pendientes: 2 abiertos (1 para hoy o atrasados)" in text
+    assert "Memoria: 1 dato guardado" in text
+    assert "pasaporte" not in text and "Laura" not in text
+
+
+def test_status_without_database_shows_empty_tasks_and_memory(isolated_config_dir: Path) -> None:
+    text = report(FULL_ENV, None)
+
+    assert "Pendientes: ninguno" in text and "Memoria: vacía" in text
+    assert not (isolated_config_dir / "jarvis.db").exists()

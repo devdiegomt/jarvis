@@ -14,9 +14,11 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.logs import tail
+from jarvis.long_term_memory import MemoryStore
 from jarvis.reminders import ReminderStore
 from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskInfo, describe_result
 from jarvis.speech import describe_speech
+from jarvis.tasks import TaskStore
 from jarvis.voice import describe_voice
 
 LOG_LINES = 5
@@ -85,17 +87,33 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     lines.append(f"Notas de voz: {describe_voice(settings.voice)}")
     lines.append(f"Respuestas con voz: {describe_speech(settings.speech)}")
 
-    # Solo la cantidad y la hora: el texto de los recordatorios no se muestra.
+    # Solo cantidades y fechas: el texto de recordatorios, pendientes y recuerdos no se muestra.
     # `estado` solo lee: si la base de datos aún no existe, no la crea.
-    pending = []
-    if settings.summary.db_path.exists():
-        store = ReminderStore(settings.summary.db_path, now=lambda: datetime.now(settings.timezone))
-        pending = store.pending()
+    db_path = settings.summary.db_path
+    if not db_path.exists():
+        return lines + ["Recordatorios pendientes: ninguno", "Pendientes: ninguno", "Memoria: vacía"]
+
+    def now() -> datetime:
+        return datetime.now(settings.timezone)
+
+    pending = ReminderStore(db_path, now=now).pending()
     if pending:
         next_at = pending[0].due_at.astimezone(settings.timezone)
         lines.append(f"Recordatorios pendientes: {len(pending)} (el próximo: {next_at:%Y-%m-%d %H:%M})")
     else:
         lines.append("Recordatorios pendientes: ninguno")
+
+    tasks = TaskStore(db_path, now=now)
+    open_tasks, due = tasks.open(), tasks.due_by(now().date())
+    if open_tasks:
+        lines.append(f"Pendientes: {len(open_tasks)} abiertos ({len(due)} para hoy o atrasados)")
+    else:
+        lines.append("Pendientes: ninguno")
+    memories = MemoryStore(db_path, now=now).count()
+    if memories:
+        lines.append(f"Memoria: {memories} {'dato guardado' if memories == 1 else 'datos guardados'}")
+    else:
+        lines.append("Memoria: vacía")
     return lines
 
 

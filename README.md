@@ -8,10 +8,11 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.8.1**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
+**v0.9**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
 segundo plano) escribiéndole o con notas de voz, y te responde también con voz; te crea
-recordatorios y te envía un resumen del día de lunes a viernes (por Telegram o Gmail). El envío de
-mensajes a terceros sigue simulado.
+recordatorios, lleva tu lista de pendientes, recuerda lo que le cuentas de ti entre conversaciones y
+te envía un resumen del día de lunes a viernes (por Telegram o Gmail). El envío de mensajes a
+terceros sigue simulado.
 Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
 
 ## Requisitos
@@ -221,6 +222,30 @@ Los recordatorios se guardan en tu equipo (`jarvis.db`); los ya enviados o cance
 los 30 días. Crear o cancelar un recordatorio no pide confirmación: es interno a JARVIS y siempre
 se puede deshacer. `uv run jarvis estado` muestra cuántos hay pendientes y la hora del próximo.
 
+## Pendientes y memoria
+
+**Pendientes** son cosas por hacer sin hora fija; si necesitas un aviso a una hora, pide un
+recordatorio.
+
+- *"Anota que tengo que renovar el pasaporte antes del viernes"*
+- *"¿Qué tengo pendiente?"* / *"Ya renové el pasaporte"* / *"Borra lo del banco, ya no hace falta"*
+
+El resumen diario incluye los pendientes que vencen ese día o están atrasados. Los ya hechos se
+borran a los 30 días.
+
+**Memoria a largo plazo:** cuando le cuentas algo que seguirá siendo cierto (*"mi socia se llama
+Laura y prefiere reuniones por la mañana"*), JARVIS lo anota por su cuenta, te avisa (*📝 Lo
+recordaré*) y lo tiene presente en las próximas conversaciones, aunque empieces una nueva con /nuevo.
+
+- **/memoria** muestra todo lo que recuerda, numerado.
+- *"Olvida el 3"* o *"olvida lo de Laura"* lo borra; si algo cambió, díselo y lo corrige.
+- Los datos se guardan solo en tu PC (`jarvis.db`) y no caducan: siguen ahí hasta que los borras.
+  Por seguridad, no guarda números largos como tarjetas o cuentas.
+- Hasta 200 datos; si se llena, te pedirá que borres alguno.
+
+Crear, completar o borrar pendientes y datos no pide confirmación: es interno a JARVIS y se puede
+deshacer. `uv run jarvis estado` muestra cuántos hay, sin mostrar su texto.
+
 ## Notas de voz
 
 Mándale a tu bot una nota de voz como harías con una persona. JARVIS la transcribe en tu PC, te
@@ -344,8 +369,9 @@ Cada ejecución queda registrada (solo el resultado, nunca el contenido) en
 uv run jarvis estado
 ```
 
-Resume la configuración (calendario, canal del resumen, Telegram, voz), si las tareas programadas están
-activas y las últimas líneas de los registros. Los registros solo contienen resultados, nunca el
+Resume la configuración (calendario, canal del resumen, Telegram, voz), cuántos recordatorios,
+pendientes y datos de memoria hay, si las tareas programadas están activas y las últimas líneas de
+los registros. Los registros solo contienen resultados, nunca el
 texto de tus mensajes.
 
 ## Configuración
