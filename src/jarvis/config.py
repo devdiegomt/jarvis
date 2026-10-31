@@ -3,7 +3,7 @@
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -25,8 +25,10 @@ SUMMARY_CHANNELS = ("gmail", "telegram")
 TRANSCRIPTION_ENGINES = ("local", "no")
 DEFAULT_WHISPER_MODEL = "small"
 # Respuestas con voz: "local" (Piper en el equipo) o "no" (desactivadas).
-SPEECH_ENGINES = ("local", "no")
+# Respuestas con voz: "local" (Piper en el equipo), "azure" (Azure AI Speech) o "no".
+SPEECH_ENGINES = ("local", "azure", "no")
 DEFAULT_PIPER_VOICE = "es_MX-ald-medium"
+DEFAULT_AZURE_VOICE = "es-CO-SalomeNeural"
 # Palabra de activación en el PC ("Hey JARVIS"): apagada por defecto (micrófono siempre abierto).
 DEFAULT_WAKE_THRESHOLD = 0.5
 
@@ -81,11 +83,17 @@ class VoiceSettings:
 
 @dataclass(frozen=True)
 class SpeechSettings:
-    """Respuestas con voz. `engine` dice quién genera la voz; hoy solo "local" (o "no")."""
+    """Respuestas con voz. `engine` dice quién genera la voz: "local" (Piper), "azure" o "no".
+
+    Con Azure, Piper (`voice`) sirve de respaldo si Azure falla.
+    """
 
     engine: str
     voice: str  # voz de Piper: <idioma>-<nombre>-<calidad>, por ejemplo es_MX-ald-medium
     voices_dir: Path  # carpeta donde `preparar-voz` descarga las voces
+    azure_key: str = field(default="", repr=False)  # nunca se muestra (ni en `repr`)
+    azure_region: str = ""
+    azure_voice: str = DEFAULT_AZURE_VOICE
 
     @property
     def enabled(self) -> bool:
@@ -212,7 +220,30 @@ def load_speech_settings(env: Mapping[str, str]) -> SpeechSettings:
             f"JARVIS_PIPER_VOZ='{voice}' no es válido. Usa el formato <idioma>-<nombre>-<calidad>, "
             f"por ejemplo {DEFAULT_PIPER_VOICE}."
         )
-    return SpeechSettings(engine=engine, voice=voice, voices_dir=DEFAULT_CONFIG_DIR / "voz" / "piper")
+    settings = SpeechSettings(engine=engine, voice=voice, voices_dir=DEFAULT_CONFIG_DIR / "voz" / "piper")
+    return _with_azure(settings, env) if engine == "azure" else settings
+
+
+def _with_azure(settings: SpeechSettings, env: Mapping[str, str]) -> SpeechSettings:
+    key = _get(env, "AZURE_SPEECH_KEY")
+    if not key:
+        raise ConfigError(
+            "Falta AZURE_SPEECH_KEY (la clave de tu recurso Speech de Azure). Ver la sección "
+            "«Voz de Azure» del README, o usa JARVIS_RESPUESTA_VOZ=local."
+        )
+    region = _get(env, "AZURE_SPEECH_REGION").lower()
+    # La región forma parte de la dirección del servicio: solo letras y números.
+    if not re.fullmatch(r"[a-z0-9]+", region):
+        raise ConfigError(
+            f"AZURE_SPEECH_REGION='{region}' no es válida: copia la región de tu recurso, por ejemplo eastus."
+        )
+    azure_voice = _get(env, "JARVIS_AZURE_VOZ") or DEFAULT_AZURE_VOICE
+    if not re.fullmatch(r"[a-z]{2,3}-[A-Z]{2,4}-[A-Za-z0-9]+", azure_voice):
+        raise ConfigError(
+            f"JARVIS_AZURE_VOZ='{azure_voice}' no es válida. Usa el nombre de la voz de Azure, por ejemplo "
+            f"{DEFAULT_AZURE_VOICE}."
+        )
+    return replace(settings, azure_key=key, azure_region=region, azure_voice=azure_voice)
 
 
 def load_wake_word_settings(env: Mapping[str, str]) -> WakeWordSettings:

@@ -1,8 +1,8 @@
 """Respuestas con voz: texto a nota de voz.
 
-Hoy la voz es local, con Piper: el texto nunca sale del equipo y el audio se genera en memoria.
-La interfaz `Speaker` permite cambiar de motor más adelante (por ejemplo, ElevenLabs) sin tocar
-el chat. Como la transcripción, Piper es opcional (grupo `voz`).
+Dos motores detrás de la interfaz `Speaker`: Piper, en el equipo (el texto nunca sale del PC y
+el audio se genera en memoria; opcional, grupo `voz`), y Azure AI Speech (`azure_speech.py`), con
+Piper como respaldo. Cambiar de motor no toca el chat.
 """
 
 import importlib.util
@@ -162,13 +162,22 @@ def build_speaker(settings: SpeechSettings) -> Speaker | None:
     """La voz configurada, o None si las respuestas con voz están desactivadas."""
     if not settings.enabled:
         return None
-    return PiperSpeaker(settings.voice, settings.voices_dir)
+    piper = PiperSpeaker(settings.voice, settings.voices_dir)
+    if settings.engine == "azure":
+        from jarvis.azure_speech import AzureSpeaker
+
+        return AzureSpeaker(settings.azure_key, settings.azure_region, settings.azure_voice, fallback=piper)
+    return piper
 
 
 def describe_speech(settings: SpeechSettings, installed: Callable[[], bool] | None = None) -> str:
     """Estado de las respuestas con voz, para `estado` y el arranque del bot (sin cargar la voz)."""
     if not settings.enabled:
         return "desactivadas (JARVIS_RESPUESTA_VOZ=no)"
+    if settings.engine == "azure":
+        ready = (installed or piper_installed)() and voice_downloaded(settings.voices_dir, settings.voice)
+        backup = f"respaldo: Piper «{settings.voice}»" if ready else "sin respaldo en el PC"
+        return f"activadas (Azure, voz {settings.azure_voice}; {backup})"
     if not (installed or piper_installed)():
         return f"⚠ no instaladas: ejecuta {INSTALL_HINT}"
     if not voice_downloaded(settings.voices_dir, settings.voice):

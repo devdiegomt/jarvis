@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.9 (cubre hasta la v0.10.1)
+- **Versión del documento:** 2.0 (cubre hasta la v0.10.2)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -178,6 +178,16 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   `preparar-voz` descarga sus modelos; `JARVIS_ACTIVACION_UMBRAL` ajusta la sensibilidad y `estado`
   muestra si está activo.
 
+### v0.10.2: voz de Azure
+
+- **RF-50.** Con `JARVIS_RESPUESTA_VOZ=azure`, las respuestas habladas (Telegram y "Hey JARVIS") usan
+  una voz neuronal de Azure AI Speech (`JARVIS_AZURE_VOZ`, por defecto `es-CO-SalomeNeural`).
+- **RF-51.** Si Azure falla (red, clave, límite de uso), responde la voz de Piper si está
+  disponible; si tampoco, la respuesta llega por escrito. Una clave o región rechazadas, o el límite
+  agotado, se explican una vez.
+- **RF-52.** `jarvis probar-voz "texto"` dice el texto por los parlantes con la voz configurada (con
+  Azure, sin respaldo, para ver sus errores); `estado` muestra el motor, la voz y el respaldo.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -203,8 +213,10 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   y los registros solo contienen sus IDs.
 - **RNF-08c.** El audio de las notas de voz se procesa en memoria en el PC y nunca se guarda en disco
   ni se envía a terceros; los registros solo contienen su duración y el tiempo de transcripción.
-- **RNF-08d.** Las respuestas con voz se generan en el PC, en memoria: su texto no se envía a ningún
-  servicio de voz externo.
+- **RNF-08d.** Con Piper, las respuestas con voz se generan en el PC, en memoria. Con Azure (opcional),
+  el texto de las respuestas habladas se envía a Microsoft por HTTPS verificado con el almacén del
+  sistema; la clave va en `.env` y nunca aparece en registros ni errores, y los registros no guardan
+  el texto.
 - **RNF-08e.** Los datos de la memoria a largo plazo se guardan solo en el equipo y no caducan:
   se borran cuando el usuario lo pide. No se guardan números largos (tarjetas, cuentas, documentos).
   Los pendientes hechos se borran a los 30 días. Los registros no contienen el texto de ninguno.
@@ -252,7 +264,7 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - Leer los chats personales del usuario (WhatsApp, Telegram) o escribir desde su cuenta.
 - Enviar mensajes reales a terceros: `enviar_mensaje` sigue simulada.
 - Crear, modificar o borrar eventos del calendario.
-- Imágenes o archivos en el chat; voces en la nube (por ejemplo, ElevenLabs).
+- Imágenes o archivos en el chat; otras voces en la nube (por ejemplo, ElevenLabs).
 - WhatsApp como canal (retirado en la v0.5; ver ADR 004 y ADR 005).
 - Varios usuarios, servidor en la nube, Alexa y llamadas telefónicas (ver roadmap).
 
@@ -270,4 +282,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-37 a RF-40 | `speech.py`, `chat.py`, `memory.py`, `telegram/client.py`, `cli.py`, `status.py` | `test_speech.py`, `test_chat.py`, `test_memory.py`, `test_telegram.py`, `test_status.py` |
 | RF-41 a RF-45 | `tasks.py`, `long_term_memory.py`, `tools/pendientes.py`, `tools/memoria.py`, `prompts.py`, `chat.py`, `summary.py`, `status.py` | `test_tasks.py`, `test_long_term_memory.py`, `test_chat.py`, `test_status.py` |
 | RF-46 a RF-49 | `wake_word.py`, `pc_voice.py`, `assistant.py`, `prompts.py`, `telegram/app.py`, `cli.py`, `status.py` | `test_pc_voice.py`, `test_status.py` |
+| RF-50 a RF-52 | `azure_speech.py`, `speech.py`, `config.py`, `cli.py`, `wake_word.py` | `test_azure_speech.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

@@ -9,6 +9,7 @@
 - `uv run jarvis programar-telegram` / `quitar-telegram`: JARVIS en segundo plano al iniciar sesión.
 - `uv run jarvis preparar-voz`: descarga el modelo de Whisper, la voz de Piper y los modelos de "Hey JARVIS".
 - `uv run jarvis escuchar`: prueba "Hey JARVIS" en el PC, mostrando en la consola lo que pasa.
+- `uv run jarvis probar-voz "texto"`: dice el texto por los parlantes con la voz configurada.
 - `uv run jarvis estado`: configuración, tareas programadas y registros.
 """
 
@@ -16,6 +17,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable
+from typing import Any
 from datetime import datetime
 
 import anthropic
@@ -291,6 +293,40 @@ def _show_timings_in_console() -> None:
     chat_logger.setLevel(logging.INFO)
 
 
+def run_try_voice(text: str) -> None:
+    """`jarvis probar-voz`: dice un texto por los parlantes, para elegir y comprobar la voz.
+
+    Con Azure no usa el respaldo (Piper), para que se vea si Azure falla y por qué.
+    """
+    from jarvis.pc_voice import AudioDeviceError, SoundDeviceAudio
+    from jarvis.speech import PiperSpeaker, SpeechError
+
+    try:
+        speech = load_speech_settings(read_env())
+    except ConfigError as exc:
+        print(f"Error de configuración: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if not speech.enabled:
+        print("Las respuestas con voz están desactivadas (JARVIS_RESPUESTA_VOZ=no en tu .env).")
+        return
+    speaker: Any
+    if speech.engine == "azure":
+        from jarvis.azure_speech import AzureSpeaker
+
+        speaker = AzureSpeaker(speech.azure_key, speech.azure_region, speech.azure_voice)
+    else:
+        speaker = PiperSpeaker(speech.voice, speech.voices_dir)
+    print(f"Voz: {speaker.name}")
+    try:
+        import numpy as np
+
+        pcm, sample_rate = speaker.synthesize(text)
+        SoundDeviceAudio().play(np.frombuffer(pcm, dtype=np.int16), sample_rate)
+    except (SpeechError, AudioDeviceError, ImportError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS, tu asistente personal.")
     commands = parser.add_subparsers(dest="command")
@@ -310,6 +346,8 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("quitar-telegram", help="Detiene JARVIS en segundo plano y quita el arranque.")
     commands.add_parser("preparar-voz", help="Descarga lo necesario para entender y responder con voz.")
     commands.add_parser("escuchar", help="Prueba «Hey JARVIS» en el PC (micrófono y parlantes).")
+    try_voice = commands.add_parser("probar-voz", help="Dice un texto por los parlantes con la voz configurada.")
+    try_voice.add_argument("texto", nargs="?", default="Hola, soy JARVIS. ¿En qué te ayudo hoy?")
     commands.add_parser("estado", help="Muestra la configuración, las tareas programadas y los registros.")
     return parser
 
@@ -345,6 +383,8 @@ def main(argv: list[str] | None = None) -> None:
         run_prepare_voice()
     elif args.command == "escuchar":
         run_listen()
+    elif args.command == "probar-voz":
+        run_try_voice(args.texto)
     elif args.command == "estado":
         from jarvis.status import run_status
 

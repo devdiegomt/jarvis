@@ -87,7 +87,10 @@ def wake_word_problem(settings: Settings, installed: Callable[[], bool] | None =
     if not (installed or wake_word_installed)():
         return f"no está instalada: ejecuta {INSTALL_HINT}"
     whisper_ready = model_downloaded(settings.voice.models_dir / settings.voice.model)
-    piper_ready = voice_downloaded(settings.speech.voices_dir, settings.speech.voice)
+    # Con Azure, la voz no depende de Piper (es solo el respaldo).
+    piper_ready = settings.speech.engine == "azure" or voice_downloaded(
+        settings.speech.voices_dir, settings.speech.voice
+    )
     if not (wake_models_downloaded(settings.wake_word.models_dir) and whisper_ready and piper_ready):
         return f"faltan modelos de voz: ejecuta {PREPARE_HINT}"
     return None
