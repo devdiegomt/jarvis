@@ -288,8 +288,8 @@ elección se guarda.
 
 - El audio nunca sale de tu PC ni se guarda en disco: se transcribe en memoria y se descarta.
   Lo transcrito queda en el historial del chat como cualquier mensaje (se borra a los 30 días).
-- Notas de hasta 5 minutos. La primera nota tras arrancar JARVIS tarda unos segundos más, mientras
-  carga el modelo.
+- Notas de hasta 5 minutos. Whisper y Piper se cargan al arrancar JARVIS, así que la primera nota
+  no espera de más (si la mandas justo al encender el PC, puede tardar unos segundos).
 - Si las transcripciones fallan a menudo, prueba un modelo mayor en `.env`
   (`JARVIS_WHISPER_MODELO=medium` o `large-v3-turbo`, más precisos y más lentos) o uno menor si van
   lentas (`base`). Después de cambiarlo, vuelve a ejecutar `preparar-voz`.
@@ -331,7 +331,7 @@ respuestas con voz activas (son las que vienen por defecto).
   **No se activa**: bájalo (por ejemplo, `0.3`) y di "Hey JARVIS" con claridad. La frase es en
   inglés porque el modelo viene entrenado así; más adelante se podrá entrenar uno para "Oye JARVIS".
 - **"No te escuché"**: empieza a hablar en los 4 segundos siguientes al tono, o habla más cerca del
-  micrófono. El pedido termina cuando haces una pausa de un segundo (como máximo dura 15 s).
+  micrófono. El pedido termina cuando haces una pausa corta (menos de un segundo; como máximo dura 15 s).
 - **No arranca**: `uv run python -m jarvis estado` dice qué falta. Si Windows bloquea alguna
   biblioteca de audio ("Control de aplicaciones"), avísame con el mensaje exacto.
 - Si JARVIS corre en segundo plano con la palabra de activación, `escuchar` también lo tendrá
@@ -412,6 +412,18 @@ igual con la agenda sin comentario. Puede llegar por **Telegram** (recomendado) 
 Cada ejecución queda registrada (solo el resultado, nunca el contenido) en
 `~/.config/jarvis/logs/resumen.log`.
 
+## Si responde lento
+
+Cada respuesta pasa por varias etapas: transcribir tu voz (Whisper), pensar la respuesta (Claude) y
+generar la voz (Piper). El registro anota cuánto tarda cada una, sin el contenido: míralo al final de
+`uv run python -m jarvis estado` (líneas como *"Nota de voz de 4 s transcrita en 1.8 s"* o
+*"Respuesta de la IA en 3.2 s"*). Con `escuchar`, esos tiempos salen en la consola.
+
+- **La transcripción es lo más lento**: prueba un modelo menor, `JARVIS_WHISPER_MODELO=base` (más
+  rápido, algo menos preciso), y vuelve a ejecutar `preparar-voz`.
+- **La IA es lo más lento**: `JARVIS_ESFUERZO=low` (por defecto) es lo más rápido; si las
+  respuestas te parecen flojas, prueba `medium`.
+
 ## Ver el estado
 
 ```bash
@@ -429,6 +441,7 @@ texto de tus mensajes.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | API key de Anthropic (obligatoria) | |
 | `JARVIS_MODEL` | Modelo de Claude | `claude-sonnet-5-5` |
+| `JARVIS_ESFUERZO` | Cuánto razona Claude en el chat y la voz: `low` (rápido), `medium`, `high`, `xhigh`, `max` | `low` |
 | `JARVIS_TIMEZONE` | Zona horaria IANA | la del sistema |
 | `JARVIS_CALENDAR` | `sample` o `google` | `sample` |
 | `GOOGLE_CALENDAR_ID` | Calendario a leer | `primary` |

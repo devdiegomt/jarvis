@@ -63,6 +63,7 @@ def run_telegram(scheduled: bool = False) -> None:
     bot_name = _prepare_bot_or_exit(client, wait_for_network=scheduled)
 
     assistant = build_assistant(settings, calendar)
+    assistant.start_warm_up()
     now, memories = assistant.now, assistant.memories
     channel = TelegramChannel(client)
     delivery = ReminderDelivery(assistant.reminders, channel, telegram.owner_id, settings.timezone, now)

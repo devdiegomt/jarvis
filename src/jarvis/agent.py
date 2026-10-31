@@ -30,8 +30,11 @@ class Agent:
         system_prompt: str,
         max_iterations: int = MAX_ITERATIONS,
         history: list[MessageParam] | None = None,
+        effort: str | None = None,
     ) -> None:
+        """`effort`: cuánto razona el modelo (low… max); None usa el valor por defecto del modelo."""
         self._client = client
+        self._effort = effort
         self._registry = registry
         self._model = model
         self._system_prompt = system_prompt
@@ -43,6 +46,7 @@ class Agent:
         """Procesa un mensaje del usuario y devuelve la respuesta final de JARVIS."""
         self._append_user_content([{"type": "text", "text": user_message}])
 
+        options: dict[str, Any] = {"output_config": {"effort": self._effort}} if self._effort else {}
         for _ in range(self._max_iterations):
             response = self._client.messages.create(
                 model=self._model,
@@ -50,6 +54,7 @@ class Agent:
                 system=self._system_prompt,
                 tools=self._registry.schemas(),
                 messages=self.history,
+                **options,
             )
             # Se guarda el contenido completo (incluidos bloques de thinking y tool_use).
             self.history.append(

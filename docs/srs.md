@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 1.8 (cubre hasta la v0.10)
+- **Versión del documento:** 1.9 (cubre hasta la v0.10.1)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -215,7 +215,11 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   en memoria, para transcribirlo en el PC. Nada se escribe en disco ni sale del equipo, y los
   registros solo anotan activaciones y duraciones. Mientras JARVIS habla, el micrófono se ignora.
 
-### 4.3 Fiabilidad
+### 4.3 Fiabilidad y rapidez
+
+- **RNF-09b.** Las respuestas de chat y voz piden a Claude un esfuerzo bajo por defecto
+  (`JARVIS_ESFUERZO`); Whisper y Piper se cargan al arrancar, y la transcripción usa búsqueda
+  simple. El registro anota la duración de cada etapa (transcripción, IA, voz), nunca su contenido.
 
 - **RNF-09.** Un fallo de un servicio externo no rompe el programa: se informa al usuario con un
   mensaje claro en español.

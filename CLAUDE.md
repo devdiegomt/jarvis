@@ -41,6 +41,9 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   grabación hasta el silencio, Whisper, chat por un canal propio (`PcVoiceChannel`) y respuesta por
   los parlantes con Piper; dentro del proceso en segundo plano, apagado por defecto
   (`JARVIS_PALABRA_ACTIVACION`), y `jarvis escuchar` para probarlo. Ver `docs/adr/012-hey-jarvis-en-el-pc.md`.
+  v0.10.1: respuestas más rápidas: esfuerzo bajo de Claude en chat y voz (`JARVIS_ESFUERZO`),
+  Whisper con búsqueda simple, Whisper y Piper precargados al arrancar, cierre del pedido tras
+  0,7 s de silencio y tiempos de cada etapa en el registro. Ver `docs/adr/013-respuestas-rapidas.md`.
 - **v0.11 (siguiente):** búsqueda en internet.
 - Después, en este orden: escribir en el calendario; avisos proactivos; Gmail (avisos
   de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.

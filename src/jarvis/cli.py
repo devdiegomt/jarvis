@@ -13,6 +13,7 @@
 """
 
 import argparse
+import logging
 import sys
 from collections.abc import Callable
 from datetime import datetime
@@ -81,6 +82,7 @@ def build_agent() -> tuple[Agent, CalendarSource]:
         ),
         model=settings.model,
         system_prompt=build_system_prompt(now().date(), memories.all()),
+        effort=settings.effort,
     )
     return agent, calendar
 
@@ -265,7 +267,10 @@ def run_listen() -> None:
             "Ojo: si JARVIS corre en segundo plano con JARVIS_PALABRA_ACTIVACION=si, también te responderá.\n"
             "Para probar solo aquí, detenlo antes con `uv run python -m jarvis quitar-telegram`.\n"
         )
-    thread = start_pc_voice(build_assistant(settings, calendar), console=True)
+    _show_timings_in_console()
+    assistant = build_assistant(settings, calendar)
+    assistant.start_warm_up()
+    thread = start_pc_voice(assistant, console=True)
     if thread is None:
         sys.exit(1)
     print("👂 Escuchando. Di «Hey JARVIS» y luego tu pedido. Ctrl+C para salir.\n")
@@ -274,6 +279,16 @@ def run_listen() -> None:
             thread.join(timeout=0.5)  # con timeout, para que Ctrl+C funcione también en Windows
     except KeyboardInterrupt:
         print("\nHasta luego.")
+
+
+def _show_timings_in_console() -> None:
+    """En `escuchar`, los registros (solo tiempos y resultados) se ven en la consola: así se ve
+    cuánto tarda cada etapa (transcripción, IA, voz)."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("   ⏱ %(message)s"))
+    chat_logger = logging.getLogger("jarvis.chat")
+    chat_logger.addHandler(handler)
+    chat_logger.setLevel(logging.INFO)
 
 
 def build_parser() -> argparse.ArgumentParser:

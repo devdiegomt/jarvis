@@ -11,6 +11,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
+# Cuánto razona Claude en el chat y la voz: bajo responde antes y basta para conversar.
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+DEFAULT_EFFORT = "low"
 CALENDAR_SOURCES = ("sample", "google")
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "jarvis"
 DEFAULT_SUMMARY_TIME = time(7, 0)
@@ -102,6 +105,7 @@ class WakeWordSettings:
 class Settings:
     api_key: str
     model: str
+    effort: str
     timezone: tzinfo
     calendar_source: str
     google: GoogleSettings
@@ -128,6 +132,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     return Settings(
         api_key=api_key,
         model=_get(env, "JARVIS_MODEL") or DEFAULT_MODEL,
+        effort=_load_effort(env),
         timezone=load_timezone(env),
         calendar_source=_load_calendar_source(env),
         google=load_google_settings(env),
@@ -260,6 +265,13 @@ def _load_time(env: Mapping[str, str], name: str, default: time) -> time:
         raise ConfigError(
             f"{name}='{value}' no es una hora válida. Usa el formato HH:MM, por ejemplo 07:00."
         ) from exc
+
+
+def _load_effort(env: Mapping[str, str]) -> str:
+    effort = (_get(env, "JARVIS_ESFUERZO") or DEFAULT_EFFORT).lower()
+    if effort not in EFFORT_LEVELS:
+        raise ConfigError(f"JARVIS_ESFUERZO='{effort}' no es válido. Opciones: {', '.join(EFFORT_LEVELS)}.")
+    return effort
 
 
 def _load_calendar_source(env: Mapping[str, str]) -> str:

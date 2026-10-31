@@ -98,7 +98,13 @@ def test_transcribes_in_spanish_and_loads_the_model_once(tmp_path: Path) -> None
     whisper.transcribe(b"ogg")
 
     assert loads == [model_dir]
-    assert model.calls[0] == {"audio": b"ogg", "language": "es", "vad_filter": True}
+    assert model.calls[0] == {
+        "audio": b"ogg",
+        "language": "es",
+        "vad_filter": True,
+        "beam_size": 1,  # búsqueda simple: mucho más rápida en CPU
+        "condition_on_previous_text": False,
+    }
 
 
 def test_not_installed_explains_how_to_install(tmp_path: Path) -> None:
@@ -257,3 +263,14 @@ def test_prepare_voice_when_disabled(monkeypatch: pytest.MonkeyPatch, capsys: py
     prepare(monkeypatch, {"JARVIS_TRANSCRIPCION": "no", "JARVIS_RESPUESTA_VOZ": "no"})
 
     assert "desactivadas" in capsys.readouterr().out
+
+
+def test_preload_loads_the_model_once_and_never_raises(tmp_path: Path) -> None:
+    whisper, loads = transcriber(tmp_path, FakeModel())
+    whisper.preload()  # sin modelo descargado: no falla, solo lo registra
+    assert loads == []
+
+    downloaded_model(tmp_path)
+    whisper.preload()
+    whisper.transcribe(b"ogg")
+    assert len(loads) == 1
