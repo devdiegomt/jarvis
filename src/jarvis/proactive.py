@@ -19,6 +19,7 @@ from jarvis.gmail_reader import Email, GmailReader, MailError, MailNotAuthorized
 from jarvis.mail_watch import WatchList
 from jarvis.summary import format_spanish_date
 from jarvis.tasks import TaskStore
+from jarvis.weather import WeatherService, day_line
 
 CHECK_INTERVAL_SECONDS = 60
 CALENDAR_REFRESH = timedelta(minutes=5)  # el calendario se consulta cada 5 minutos, no cada minuto
@@ -91,8 +92,10 @@ class ProactiveNotifier:
         mail: GmailReader | None = None,
         watched: WatchList | None = None,
         mail_interval: timedelta = timedelta(minutes=2),
+        weather: WeatherService | None = None,
     ) -> None:
         self._calendar = calendar
+        self._weather = weather
         self._mail = mail
         self._watched = watched
         self._mail_interval = mail_interval
@@ -182,7 +185,9 @@ class ProactiveNotifier:
         except CalendarError as exc:
             logger.warning("No se pudo preparar el vistazo a mañana: %s", exc)
             return 0
-        text = evening_preview(tomorrow, meetings, [t.text for t in self._tasks.due_by(tomorrow)])
+        forecast = self._weather.day(tomorrow) if self._weather is not None else None
+        weather = day_line(forecast) if forecast is not None else None
+        text = evening_preview(tomorrow, meetings, [t.text for t in self._tasks.due_by(tomorrow)], weather)
         return 1 if self._send_once(key, text) else 0
 
     # --- Correos de clientes -------------------------------------------------
@@ -270,7 +275,9 @@ def mail_alert(email: Email) -> str:
     return "\n".join(lines)
 
 
-def evening_preview(day: date, meetings: list[Meeting], due_tasks: list[str]) -> str:
+def evening_preview(
+    day: date, meetings: list[Meeting], due_tasks: list[str], weather: str | None = None
+) -> str:
     title = f"🌙 Mañana, {format_spanish_date(day)}"
     if meetings:
         count = len(meetings)
@@ -280,6 +287,8 @@ def evening_preview(day: date, meetings: list[Meeting], due_tasks: list[str]) ->
             lines.append(f"- {when}  {meeting.title}")
     else:
         lines = [f"{title}: no tienes reuniones."]
+    if weather:
+        lines.insert(1, weather)
     if due_tasks:
         lines.append("Pendientes que vencen (o atrasados): " + "; ".join(due_tasks))
     return "\n".join(lines)

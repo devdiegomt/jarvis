@@ -7,6 +7,7 @@ from anthropic import Anthropic
 from anthropic.types import ContentBlock, MessageParam, ToolResultBlockParam
 
 from jarvis.tools import ToolRegistry
+from jarvis.usage import Usage, usage_from_response
 
 MAX_ITERATIONS = 10
 MAX_TOKENS = 16000
@@ -45,13 +46,21 @@ class Agent:
         # Del último `send`: páginas citadas (título, URL) y búsquedas en internet hechas.
         self.last_sources: list[tuple[str, str]] = []
         self.last_web_searches = 0
+        self.last_usage = Usage()  # tokens y búsquedas de todas las llamadas del último `send`
+
+    @property
+    def model(self) -> str:
+        return self._model
 
     def send(self, user_message: str) -> str:
         """Procesa un mensaje del usuario y devuelve la respuesta final de JARVIS."""
         self._append_user_content([{"type": "text", "text": user_message}])
-        self.last_sources, self.last_web_searches = [], 0
+        self.last_sources, self.last_web_searches, self.last_usage = [], 0, Usage()
 
         options: dict[str, Any] = {"output_config": {"effort": self._effort}} if self._effort else {}
+        # Caché automática: tools, system prompt e historial se repiten en cada llamada y, leídos de la
+        # caché, cuestan el 10 %. Solo marca hasta dónde guardar: no cambia ni recorta el historial.
+        options["cache_control"] = {"type": "ephemeral"}
         for _ in range(self._max_iterations):
             response = self._client.messages.create(
                 model=self._model,
@@ -66,6 +75,7 @@ class Agent:
                 {"role": "assistant", "content": [_block_to_param(b) for b in response.content]}
             )
             self._note_web_use(response)
+            self.last_usage += usage_from_response(response)
 
             if response.stop_reason == "tool_use":
                 self._append_user_content(self._run_tools(response.content))

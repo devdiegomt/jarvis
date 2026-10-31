@@ -65,7 +65,14 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   pedido; permiso `gmail.readonly`. Ver `docs/adr/018-avisos-de-correo.md`.
   v0.14.1: conexiones HTTPS con Telegram reutilizadas (una por hilo, `http.client`, reintento único
   si Telegram cerró una inactiva) y tiempo de cada llamada en el registro. Ver `docs/adr/019-conexion-telegram-reutilizada.md`.
-- Después: el alojamiento (servidor, nube) se decidirá según cómo escale.
+- **v0.15 (hecha):** gastar menos y medir: prompt caching automático, tokens y costo estimado por
+  respuesta (`api_usage`, `/gasto`, `estado`), clima con Open-Meteo (`get_clima`, también en el resumen
+  y el vistazo a mañana) y comandos sin IA (`/hoy`, `/pendientes`, `/recordatorios`, `/clima`).
+  Ver `docs/adr/020-gastar-menos-y-medir.md` y la visión en `docs/vision.md`.
+- **v0.16 (siguiente):** acceso desde el iPhone: API propia de JARVIS solo por Tailscale y con clave;
+  encima, PWA, Atajos de Siri y widget de Scriptable.
+- Después: módulos de dinero o movilidad; app nativa de iOS cuando haya Mac; alojamiento (servidor,
+  nube) según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
 Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar cada versión).
@@ -81,6 +88,7 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 - `faster-whisper`, `piper-tts`, `openwakeword` y `sounddevice` (grupo opcional `voz`) para entender,
   responder y escuchar "Hey JARVIS" en el PC
 - Azure AI Speech (API REST vía `urllib` + `truststore`), opcional, para una voz más natural
+- Open-Meteo (API REST gratuita, sin clave, vía `urllib` + `truststore`) para el clima
 - SQLite para persistencia local (más adelante Postgres)
 - `python-dotenv` para configuración, `pytest` para tests
 - Gestión de dependencias con `uv` y `pyproject.toml`
@@ -89,7 +97,11 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 ```
 jarvis/
 ├── src/jarvis/
-│   ├── agent.py        # loop del agente
+│   ├── agent.py        # loop del agente (con caché de prompts y suma de tokens)
+│   ├── usage.py        # SQLite: tokens y costo estimado por respuesta (/gasto)
+│   ├── weather.py      # clima con Open-Meteo (pronóstico en memoria 30 min)
+│   ├── quick.py        # comandos sin IA: /hoy, /pendientes, /recordatorios, /clima, /gasto
+│   ├── dates.py        # fechas en español
 │   ├── config.py       # carga de .env y settings
 │   ├── prompts.py      # system prompts (consola y chat)
 │   ├── agenda/         # fuentes de calendario
@@ -133,11 +145,13 @@ jarvis/
 │   │   ├── internet.py     # web_search y web_fetch (tools de servidor de Anthropic)
 │   │   ├── calendario.py   # crear_evento, mover_evento, cancelar_evento (con confirmación)
 │   │   ├── correo.py       # contactos vigilados, buscar_correos y leer_correo (solo lectura)
+│   │   ├── clima.py        # get_clima (Open-Meteo, solo lectura)
 │   │   └── ...         # reuniones.py, mensajes.py
 │   └── cli.py          # punto de entrada por consola (chat de consola y subcomandos)
 ├── tests/
 ├── .github/workflows/  # CI: pytest en cada PR y push a main
 ├── docs/
+│   ├── vision.md       # visión: qué hace la IA y qué el código, módulos y orden
 │   ├── srs.md          # requisitos (RF / RNF por versión)
 │   └── adr/            # decisiones de arquitectura (una por archivo)
 ├── .env.example
@@ -151,7 +165,9 @@ jarvis/
   Agregar una tool nueva no debe requerir tocar `agent.py`.
 - El loop del agente tiene un límite máximo de iteraciones para evitar ciclos infinitos.
 - Errores de una tool se devuelven al modelo como resultado con `is_error`, no rompen el programa.
-- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram, Whisper, Piper, Azure) y al
+- IA solo donde aporta (ver `docs/vision.md`): lo que se resuelve en código (avisos, comandos directos,
+  datos de APIs) no llama a Claude. Toda llamada a Claude usa la caché y registra su consumo.
+- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram, Open-Meteo, Whisper, Piper, Azure) y al
   sistema (Programador de tareas) se mockean en los tests. Ningún test escribe en `~/.config/jarvis`
   (`tests/conftest.py` lo redirige a una carpeta temporal).
 - Al terminar una versión: actualizar este archivo (roadmap) y agregar un ADR si hubo una decisión relevante.
@@ -187,6 +203,8 @@ jarvis/
 - El audio de las notas de voz se procesa en memoria y no se guarda en disco ni sale del PC. Las
   respuestas con voz se generan en el PC con Piper; solo si el usuario elige Azure, su texto se
   envía a Microsoft (la clave, en `.env`, nunca en registros ni errores).
+- El registro de consumo de la API guarda solo números (tokens, búsquedas, modelo y canal). A Open-Meteo
+  solo se envían la ciudad configurada y sus coordenadas.
 - La búsqueda en internet usa solo las tools de servidor de Anthropic (sin otros proveedores): solo
   lectura, sin confirmación, con tope de búsquedas por mensaje; los registros anotan cuántas, nunca qué.
 - El correo es de solo lectura: JARVIS no envía, borra ni modifica correos. Lo que dice un correo es

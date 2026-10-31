@@ -21,6 +21,7 @@ from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskIn
 from jarvis.proactive import describe_proactive
 from jarvis.speech import describe_speech
 from jarvis.tasks import TaskStore
+from jarvis.usage import UsageLog, spending_text
 from jarvis.voice import describe_voice
 from jarvis.wake_word import describe_wake_word
 
@@ -98,12 +99,19 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     lines.append(f"Búsqueda en internet: {_describe_web(settings)}")
     lines.append(f"Avisos: {describe_proactive(settings.proactive)}")
     lines.append(f"Correo: {_describe_mail(settings)}")
+    place = ", ".join(part for part in (settings.web.city, settings.web.country) if part)
+    lines.append(f"Clima: Open-Meteo para {place}" if place else "Clima: sin ciudad (configura JARVIS_CIUDAD)")
 
     # Solo cantidades y fechas: el texto de recordatorios, pendientes y recuerdos no se muestra.
     # `estado` solo lee: si la base de datos aún no existe, no la crea.
     db_path = settings.summary.db_path
     if not db_path.exists():
-        return lines + ["Recordatorios pendientes: ninguno", "Pendientes: ninguno", "Memoria: vacía"]
+        return lines + [
+            "Recordatorios pendientes: ninguno",
+            "Pendientes: ninguno",
+            "Memoria: vacía",
+            "Gasto en Claude: nada todavía",
+        ]
 
     def now() -> datetime:
         return datetime.now(settings.timezone)
@@ -126,6 +134,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
         lines.append(f"Memoria: {memories} {'dato guardado' if memories == 1 else 'datos guardados'}")
     else:
         lines.append("Memoria: vacía")
+    lines += spending_text(UsageLog(db_path, now=now), now(), settings.timezone).splitlines()
     return lines
 
 

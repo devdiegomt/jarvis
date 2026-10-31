@@ -8,14 +8,15 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.14**: te avisa de los correos de tus clientes, antes de cada reunión y te da un vistazo a
-mañana por la noche; lee tu Google
+**v0.15**: comandos al instante sin gastar IA (`/hoy`, `/clima`, `/gasto`…), clima gratis con
+Open-Meteo y medición de cuánto cuesta cada respuesta; te avisa de los correos de tus clientes,
+antes de cada reunión y te da un vistazo a mañana por la noche; lee tu Google
 Calendar y agenda, mueve o cancela tus eventos (siempre con tu
 confirmación), chateas con JARVIS por Telegram (también en
 segundo plano) escribiéndole o con notas de voz, y te responde también con voz; en el PC lo llamas
 con "Hey JARVIS" y te contesta en voz alta. Te crea recordatorios, lleva tu lista de pendientes,
-recuerda lo que le cuentas de ti entre conversaciones, busca en internet lo que cambia (clima,
-noticias, precios) y te envía un resumen del día de lunes a
+recuerda lo que le cuentas de ti entre conversaciones, busca en internet lo que cambia (noticias,
+precios) y te envía un resumen del día de lunes a
 viernes (por Telegram o Gmail). El envío de mensajes a
 terceros sigue simulado.
 Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
@@ -289,19 +290,51 @@ el detalle (y si choca con otra cosa) y espera tu **Sí / No**; por voz, te lo p
 
 ## Búsqueda en internet
 
-Pregúntale lo que cambia con el tiempo: *"¿Va a llover hoy?"*, *"¿A cómo está el dólar?"*,
+Pregúntale lo que cambia con el tiempo: *"¿A cómo está el dólar?"*,
 *"¿Qué pasó con…?"*, *"¿A qué hora abre…?"*. JARVIS busca en internet cuando hace falta y, en
 Telegram, termina la respuesta con sus **Fuentes** (enlaces). También puedes pegarle un enlace y
 pedirle *"resúmeme esto"*.
 
-- Para que el clima y los lugares sean los de tu zona, pon tu ciudad en `.env`:
-  `JARVIS_CIUDAD=Zipaquirá` y `JARVIS_PAIS=CO`.
+- Para que los lugares sean los de tu zona, pon tu ciudad en `.env`: `JARVIS_CIUDAD=Zipaquirá` y
+  `JARVIS_PAIS=CO`. El clima de tu ciudad no usa la búsqueda (ver [Clima](#clima)).
 - Usa la búsqueda de Anthropic (la misma API de Claude): no hay que crear cuentas ni claves nuevas.
   Cada búsqueda cuesta aparte (unos 10 USD por cada 1000 búsquedas, más el texto leído), con un tope
   de 5 búsquedas por mensaje; el registro anota cuántas se hicieron, nunca qué se buscó.
 - Solo busca cuando la información puede haber cambiado; lo de tu calendario, recordatorios,
   pendientes y memoria lo responde sin internet. Solo abre enlaces que aparecen en la conversación.
 - Para desactivarla: `JARVIS_BUSQUEDA=no`.
+
+## Clima
+
+Con tu ciudad en `.env` (`JARVIS_CIUDAD=Zipaquirá`, `JARVIS_PAIS=CO`), JARVIS consulta el clima en
+[Open-Meteo](https://open-meteo.com): gratis, sin cuenta ni clave, y sin gastar una búsqueda en
+internet. Pregúntale *"¿Va a llover esta tarde?"* o usa `/clima`, y verás el clima también en `/hoy`,
+en el resumen de la mañana y en el vistazo a mañana. A Open-Meteo solo se le envía el nombre de tu
+ciudad (y sus coordenadas); el pronóstico se consulta como mucho cada media hora.
+
+## Comandos al instante (sin IA)
+
+Estos comandos de Telegram los responde JARVIS directamente, sin consultar a Claude: son
+instantáneos y no gastan créditos.
+
+| Comando | Qué muestra |
+|---|---|
+| `/hoy` | Tu día: clima, reuniones, recordatorios y pendientes que vencen |
+| `/pendientes` | Todos tus pendientes, con su fecha |
+| `/recordatorios` | Los recordatorios programados |
+| `/clima` | Ahora y los próximos 3 días |
+| `/gasto` | Cuánto has gastado en Claude hoy, en la semana y en el mes |
+
+## Cuánto cuesta
+
+Cada respuesta de Claude anota en tu equipo cuántos tokens usó (sin el texto) y su costo estimado con
+los precios públicos de la API. Lo ves con `/gasto`, al final de `estado` y, por respuesta, en el
+registro (*"Claude: 4.200 tokens de entrada (3.900 de caché), 180 de salida ≈ $0,0026"*). Es una
+estimación: la factura real está en la consola de Anthropic.
+
+JARVIS usa la caché de Anthropic: la parte que se repite en cada llamada (instrucciones, tools e
+historial) cuesta el 10 % al leerla de la caché, que dura 5 minutos. Por eso los mensajes seguidos y
+los que usan tools salen bastante más baratos.
 
 ## Pendientes y memoria
 
@@ -554,8 +587,8 @@ respuesta paga el saludo inicial. El registro completo está en `~/.config/jarvi
 uv run jarvis estado
 ```
 
-Resume la configuración (calendario, canal del resumen, Telegram, voz), cuántos recordatorios,
-pendientes y datos de memoria hay, si las tareas programadas están activas y las últimas líneas de
+Resume la configuración (calendario, canal del resumen, Telegram, voz, clima), cuántos recordatorios,
+pendientes y datos de memoria hay, el gasto estimado en Claude, si las tareas programadas están activas y las últimas líneas de
 los registros. Los registros solo contienen resultados, nunca el
 texto de tus mensajes.
 
@@ -570,7 +603,7 @@ texto de tus mensajes.
 | `JARVIS_CORREO` | Avisos de correos de clientes y lectura de Gmail: `si` o `no` | `si` |
 | `JARVIS_CORREO_MINUTOS` | Cada cuántos minutos revisa los correos (1 a 60) | `2` |
 | `JARVIS_BUSQUEDA` | Búsqueda en internet y lectura de enlaces: `si` o `no` | `si` |
-| `JARVIS_CIUDAD` / `JARVIS_PAIS` | Tu ciudad y país (código de dos letras), para búsquedas locales | |
+| `JARVIS_CIUDAD` / `JARVIS_PAIS` | Tu ciudad y país (código de dos letras), para el clima y las búsquedas locales | |
 | `JARVIS_ESFUERZO` | Cuánto razona Claude en el chat y la voz: `low` (rápido), `medium`, `high`, `xhigh`, `max` | `low` |
 | `JARVIS_TIMEZONE` | Zona horaria IANA | la del sistema |
 | `JARVIS_CALENDAR` | `sample` o `google` | `sample` |
@@ -599,10 +632,11 @@ texto de tus mensajes.
 uv run pytest
 ```
 
-Los tests no llaman a ninguna API real (Anthropic, Google, Telegram, Whisper, Piper y el Programador
-de tareas están simulados) y no necesitan el grupo de voz (`uv sync --no-group voz`). GitHub Actions los ejecuta en cada pull request y en cada push a `main`.
+Los tests no llaman a ninguna API real (Anthropic, Google, Telegram, Open-Meteo, Whisper, Piper y el
+Programador de tareas están simulados) y no necesitan el grupo de voz (`uv sync --no-group voz`). GitHub Actions los ejecuta en cada pull request y en cada push a `main`.
 
 ## Documentación
 
+- Visión y próximos pasos: [`docs/vision.md`](docs/vision.md)
 - Requisitos: [`docs/srs.md`](docs/srs.md)
 - Decisiones de arquitectura: [`docs/adr/`](docs/adr/)

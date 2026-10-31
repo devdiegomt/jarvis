@@ -24,6 +24,7 @@ from jarvis.mail_watch import WatchList
 from jarvis.memory import Conversation, ConversationStore
 from jarvis.speech import Speaker, SpeechError, SpeechUnavailableError
 from jarvis.tools import Confirmer
+from jarvis.usage import Usage, UsageLog, describe_usage
 from jarvis.voice import MAX_VOICE_SECONDS, TranscriptionError, Transcriber
 
 CONFIRMATION_TIMEOUT_SECONDS = 5 * 60
@@ -37,6 +38,9 @@ WELCOME_TEXT = (
 HELP_TEXT = (
     "Pregúntame, por ejemplo: «¿Qué tengo hoy?» o «Recuérdame a las 5 llamar a Laura». "
     "También entiendo notas de voz.\n\n"
+    "Al instante y sin gastar créditos de IA:\n"
+    "/hoy: tu día (agenda, clima, recordatorios y pendientes)\n/pendientes · /recordatorios · /clima\n"
+    "/gasto: cuánto has gastado en Claude\n\n"
     "/nuevo: empezar una conversación nueva\n/voz: elegir cuándo te respondo con voz\n"
     "/memoria: ver lo que recuerdo de ti\n/clientes: ver de quién te aviso cuando llega un correo\n"
     "/ayuda: ver esta ayuda"
@@ -85,6 +89,11 @@ TIMEOUT_MARK = "⌛ Sin respuesta: cancelado"
 
 COMMANDS = {
     "start": "Empezar",
+    "hoy": "Tu día: agenda, clima, recordatorios y pendientes",
+    "pendientes": "Ver tus pendientes",
+    "recordatorios": "Ver tus recordatorios",
+    "clima": "Clima de hoy y los próximos días",
+    "gasto": "Cuánto has gastado en Claude",
     "nuevo": "Conversación nueva",
     "voz": "Elegir cuándo responder con voz",
     "memoria": "Ver lo que JARVIS recuerda de ti",
@@ -180,8 +189,13 @@ class ChatService:
         purges: Sequence[Callable[[], int]] = (),
         show_sources: bool = True,
         watched: WatchList | None = None,
+        usage_log: UsageLog | None = None,
+        quick_commands: dict[str, Callable[[], str]] | None = None,
     ) -> None:
-        """`purges`: limpiezas diarias adicionales (por ejemplo, pendientes hechos hace tiempo)."""
+        """`purges`: limpiezas diarias adicionales (por ejemplo, pendientes hechos hace tiempo).
+
+        `quick_commands`: comandos que se responden en código, sin IA (por ejemplo, "/hoy").
+        """
         self._channel = channel
         self._button_handler = button_handler
         self._transcriber = transcriber
@@ -190,6 +204,8 @@ class ChatService:
         self._purges = purges
         self._show_sources = show_sources  # enlaces de las fuentes de internet al final del texto
         self._watched = watched
+        self._usage_log = usage_log
+        self._quick_commands = quick_commands or {}
         self._speech_warned = False  # el aviso de "voz no disponible" se envía una sola vez
         self._store = store
         self._agent_factory = agent_factory
@@ -255,6 +271,9 @@ class ChatService:
             return
         if command == "/clientes" and self._watched is not None:
             self._channel.send_text(message.sender, self._watched_text())
+            return
+        if command in self._quick_commands:
+            self._channel.send_text(message.sender, self._quick_commands[command]())
             return
 
         self._show_typing(message.sender)
@@ -394,6 +413,20 @@ class ChatService:
         finally:
             conversation.messages = agent.history
             self._store.save(conversation)
+            self._record_usage(agent)
+
+    def _record_usage(self, agent: Agent) -> None:
+        """Anota los tokens y el costo de la respuesta (solo números), aunque haya fallado a medias."""
+        usage = getattr(agent, "last_usage", None)
+        model = getattr(agent, "model", "")
+        if not isinstance(usage, Usage) or not (usage.total_input or usage.output_tokens):
+            return
+        logger.info("Claude: %s.", describe_usage(model, usage))
+        if self._usage_log is not None:
+            try:
+                self._usage_log.record(self._channel.name, model, usage)
+            except Exception:  # medir nunca debe impedir responder
+                logger.exception("No se pudo anotar el consumo de la API.")
 
     def _confirmer_for(self, sender: str) -> Confirmer:
         def confirm(prompt: str) -> bool:
