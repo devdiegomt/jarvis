@@ -197,8 +197,8 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   aparecen en la conversación.
 - **RF-55.** En Telegram, las respuestas que usaron internet terminan con sus fuentes (título y
   enlace); por voz no se leen enlaces, pero se dice de dónde sale el dato.
-- **RF-56.** La ubicación configurada (`JARVIS_CIUDAD`, `JARVIS_PAIS`, la zona horaria) mejora las
-  búsquedas locales; `JARVIS_BUSQUEDA=no` las desactiva y `estado` muestra si están activas.
+- **RF-56.** La ubicación configurada (`JARVIS_CIUDAD`, `JARVIS_PAIS`) mejora las búsquedas locales
+  (va en las instrucciones del modelo); `JARVIS_BUSQUEDA=no` las desactiva y `estado` muestra si están activas.
 
 ## 4. Requisitos no funcionales
 

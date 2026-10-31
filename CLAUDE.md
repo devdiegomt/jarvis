@@ -50,7 +50,8 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   (`web_search`, `web_fetch`; tope de 5 búsquedas por mensaje), ubicación del usuario
   (`JARVIS_CIUDAD`, `JARVIS_PAIS`) y fuentes al final del texto en Telegram.
   Ver `docs/adr/015-busqueda-en-internet.md`. v0.11.1: el registro guarda el motivo que da la API
-  cuando rechaza una petición (tipo, código y mensaje recortado; nunca el contenido).
+  cuando rechaza una petición (tipo, código y mensaje recortado; nunca el contenido). v0.11.2: la
+  ubicación ya no va en `user_location` de la búsqueda (la API rechazaba el país CO), solo en el prompt.
 - **v0.12 (siguiente):** escribir en el calendario.
 - Pendiente pequeño: reutilizar la conexión HTTPS con Telegram (hoy cada llamada abre una nueva y
   suma unos segundos por respuesta).

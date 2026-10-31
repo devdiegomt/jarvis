@@ -19,8 +19,9 @@ preguntar por lo que cambia (clima, noticias, precios, horarios) y que le resuma
    `pause_turn`, como pide la API.
 3. **Límites:** como mucho 5 búsquedas y 3 lecturas de enlaces por mensaje (unos 20 000 tokens por
    página). Son de solo lectura: no piden confirmación. `JARVIS_BUSQUEDA=no` las desactiva.
-4. **Ubicación aproximada** (`JARVIS_CIUDAD`, `JARVIS_PAIS` y la zona horaria) en `user_location`
-   y en el system prompt, para que el clima y los lugares sean los del usuario.
+4. **Ubicación del usuario** (`JARVIS_CIUDAD`, `JARVIS_PAIS`) en el system prompt, para que el modelo
+   busque el clima y los lugares de su zona. No se envía en `user_location` de la tool: la API rechaza
+   la petición entera con países que no admite (v0.11.2: "Country code CO is not supported").
 5. **Fuentes:** el agente recoge las citas de la respuesta (título y URL, sin duplicados, hasta 3).
    En Telegram se añaden al final como "Fuentes:"; por voz no se leen (el system prompt pide decir de
    dónde sale el dato). El texto citado llega partido en varios bloques: se une sin separador y se

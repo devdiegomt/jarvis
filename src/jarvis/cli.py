@@ -87,7 +87,6 @@ def build_agent() -> tuple[Agent, CalendarSource]:
             tasks=tasks,
             memories=memories,
             web=settings.web,
-            timezone=settings.timezone,
         ),
         model=settings.model,
         system_prompt=build_system_prompt(now().date(), memories.all(), settings.web),

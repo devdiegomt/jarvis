@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pytest
 from anthropic.types import (
@@ -51,23 +50,17 @@ def test_invalid_search_settings_fail(name: str, value: str) -> None:
 # --- Tools de Anthropic -----------------------------------------------------
 
 
-def test_server_tools_with_location() -> None:
-    search, fetch = build_server_tools(ZIPA, ZoneInfo("America/Bogota"))
+def test_server_tools_never_send_user_location() -> None:
+    # La API rechaza la petición entera con países que no admite ("Country code CO is not supported"):
+    # la ubicación va en el system prompt, no en la tool.
+    search, fetch = build_server_tools(ZIPA)
 
-    assert search == {
-        "type": "web_search_20260209",
-        "name": "web_search",
-        "max_uses": 5,
-        "user_location": {"type": "approximate", "city": "Zipaquirá", "country": "CO", "timezone": "America/Bogota"},
-    }
+    assert search == {"type": "web_search_20260209", "name": "web_search", "max_uses": 5}
     assert fetch["type"] == "web_fetch_20260209" and fetch["citations"] == {"enabled": True}
     assert fetch["max_uses"] == 3
 
 
-def test_server_tools_without_location_or_disabled() -> None:
-    search, _fetch = build_server_tools(WebSettings(True, "", ""), UTC)
-
-    assert "user_location" not in search  # UTC no es una zona horaria IANA con nombre útil
+def test_disabled_search_sends_no_tools() -> None:
     assert build_server_tools(WebSettings(False, "Zipaquirá", "CO")) == []
 
 

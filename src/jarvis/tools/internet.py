@@ -5,9 +5,7 @@ Son de solo lectura, así que no piden confirmación. Cada búsqueda se paga apa
 máximo por mensaje.
 """
 
-from datetime import tzinfo
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from jarvis.config import WebSettings
 
@@ -15,8 +13,12 @@ MAX_FETCHES = 3  # enlaces que se pueden leer por mensaje
 MAX_FETCH_TOKENS = 20_000  # tope aproximado de texto leído por página
 
 
-def build_server_tools(settings: WebSettings, timezone: tzinfo | None = None) -> list[dict[str, Any]]:
-    """Definiciones de `web_search` y `web_fetch`, o ninguna si la búsqueda está desactivada."""
+def build_server_tools(settings: WebSettings) -> list[dict[str, Any]]:
+    """Definiciones de `web_search` y `web_fetch`, o ninguna si la búsqueda está desactivada.
+
+    La ubicación del usuario no va en `user_location`: la API rechaza la petición entera con países
+    que no admite (por ejemplo, CO). Va en el system prompt, y el modelo la usa en sus búsquedas.
+    """
     if not settings.enabled:
         return []
     search: dict[str, Any] = {
@@ -24,9 +26,6 @@ def build_server_tools(settings: WebSettings, timezone: tzinfo | None = None) ->
         "name": "web_search",
         "max_uses": settings.max_searches,
     }
-    location = _user_location(settings, timezone)
-    if location:
-        search["user_location"] = location
     fetch = {
         "type": "web_fetch_20260209",
         "name": "web_fetch",
@@ -35,15 +34,3 @@ def build_server_tools(settings: WebSettings, timezone: tzinfo | None = None) ->
         "citations": {"enabled": True},
     }
     return [search, fetch]
-
-
-def _user_location(settings: WebSettings, timezone: tzinfo | None) -> dict[str, str] | None:
-    """Ubicación aproximada para que el clima o "cerca de mí" den resultados locales."""
-    location = {"type": "approximate"}
-    if settings.city:
-        location["city"] = settings.city
-    if settings.country:
-        location["country"] = settings.country
-    if isinstance(timezone, ZoneInfo):
-        location["timezone"] = timezone.key
-    return location if len(location) > 1 else None
