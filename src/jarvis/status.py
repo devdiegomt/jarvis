@@ -9,6 +9,7 @@ from jarvis.config import (
     SUMMARY_LOG_FILE,
     TELEGRAM_LOG_FILE,
     ConfigError,
+    Settings,
     load_settings,
     load_telegram_settings,
     read_env,
@@ -88,6 +89,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     lines.append(f"Notas de voz: {describe_voice(settings.voice)}")
     lines.append(f"Respuestas con voz: {describe_speech(settings.speech)}")
     lines.append(f"Hey JARVIS en el PC: {describe_wake_word(settings)}")
+    lines.append(f"Búsqueda en internet: {_describe_web(settings)}")
 
     # Solo cantidades y fechas: el texto de recordatorios, pendientes y recuerdos no se muestra.
     # `estado` solo lee: si la base de datos aún no existe, no la crea.
@@ -117,6 +119,14 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     else:
         lines.append("Memoria: vacía")
     return lines
+
+
+def _describe_web(settings: Settings) -> str:
+    if not settings.web.enabled:
+        return "desactivada (JARVIS_BUSQUEDA=no)"
+    place = ", ".join(part for part in (settings.web.city, settings.web.country) if part)
+    where = f", ubicación: {place}" if place else ", sin ubicación (JARVIS_CIUDAD)"
+    return f"activada (hasta {settings.web.max_searches} búsquedas por mensaje{where})"
 
 
 def _task_lines(read_task_info: TaskInfoReader | None) -> list[str]:

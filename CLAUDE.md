@@ -46,8 +46,14 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   0,7 s de silencio y tiempos de cada etapa en el registro. Ver `docs/adr/013-respuestas-rapidas.md`.
   v0.10.2: voz de Azure AI Speech (`JARVIS_RESPUESTA_VOZ=azure`, Salomé por defecto) vía API REST,
   con Piper de respaldo, y `jarvis probar-voz`. Ver `docs/adr/014-voz-de-azure.md`.
-- **v0.11 (siguiente):** búsqueda en internet.
-- Después, en este orden: escribir en el calendario; avisos proactivos; Gmail (avisos
+- **v0.11 (hecha):** búsqueda en internet y lectura de enlaces con las tools de servidor de Anthropic
+  (`web_search`, `web_fetch`; tope de 5 búsquedas por mensaje), ubicación del usuario
+  (`JARVIS_CIUDAD`, `JARVIS_PAIS`) y fuentes al final del texto en Telegram.
+  Ver `docs/adr/015-busqueda-en-internet.md`.
+- **v0.12 (siguiente):** escribir en el calendario.
+- Pendiente pequeño: reutilizar la conexión HTTPS con Telegram (hoy cada llamada abre una nueva y
+  suma unos segundos por respuesta).
+- Después, en este orden: avisos proactivos; Gmail (avisos
   de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
@@ -106,10 +112,11 @@ jarvis/
 │   │   └── app.py      # comandos telegram, telegram-vincular, programar-telegram y quitar-telegram
 │   ├── tools/          # una tool por archivo + registro central
 │   │   ├── __init__.py # tools integradas y build_registry()
-│   │   ├── registry.py # registro: nombre -> (schema, función), confirmación y errores
+│   │   ├── registry.py # registro: nombre -> (schema, función), confirmación, errores y tools de servidor
 │   │   ├── recordatorios.py # crear_recordatorio, listar_recordatorios, cancelar_recordatorio
 │   │   ├── pendientes.py   # agregar, listar, completar y borrar pendientes
 │   │   ├── memoria.py      # recordar_dato, listar_datos, olvidar_dato
+│   │   ├── internet.py     # web_search y web_fetch (tools de servidor de Anthropic)
 │   │   └── ...         # reuniones.py, mensajes.py
 │   └── cli.py          # punto de entrada por consola (chat de consola y subcomandos)
 ├── tests/
@@ -161,6 +168,8 @@ jarvis/
 - El audio de las notas de voz se procesa en memoria y no se guarda en disco ni sale del PC. Las
   respuestas con voz se generan en el PC con Piper; solo si el usuario elige Azure, su texto se
   envía a Microsoft (la clave, en `.env`, nunca en registros ni errores).
+- La búsqueda en internet usa solo las tools de servidor de Anthropic (sin otros proveedores): solo
+  lectura, sin confirmación, con tope de búsquedas por mensaje; los registros anotan cuántas, nunca qué.
 - "Hey JARVIS" (micrófono siempre abierto) viene apagado por defecto. El audio solo se analiza en
   memoria; se graba únicamente el pedido tras la palabra de activación, sin escribirlo en disco, y
   el micrófono se ignora mientras JARVIS habla. Los registros nunca guardan lo que se dijo.

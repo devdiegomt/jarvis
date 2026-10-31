@@ -73,7 +73,7 @@ def run_telegram(scheduled: bool = False) -> None:
         store=assistant.conversations,
         agent_factory=assistant.agent_factory,
         # Se llama solo al empezar una conversación: la memoria entra al día en cada conversación nueva.
-        system_prompt=lambda: build_chat_system_prompt(now().date(), memories.all()),
+        system_prompt=lambda: build_chat_system_prompt(now().date(), memories.all(), settings.web),
         now=now,
         button_handler=delivery.handle_button,
         transcriber=assistant.transcriber,

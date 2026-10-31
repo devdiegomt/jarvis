@@ -45,12 +45,24 @@ def deny_all(_prompt: str) -> bool:
 class ToolRegistry:
     def __init__(self, confirm: Confirmer = deny_all) -> None:
         self._tools: dict[str, Tool] = {}
+        self._server_tools: list[dict[str, Any]] = []
         self._confirm = confirm
 
     def register(self, tool: Tool) -> None:
         if tool.name in self._tools:
             raise ValueError(f"Ya existe una tool registrada con el nombre '{tool.name}'.")
         self._tools[tool.name] = tool
+
+    def register_server_tool(self, definition: dict[str, Any]) -> None:
+        """Tool que ejecuta Anthropic en sus servidores (por ejemplo, la búsqueda en internet).
+
+        No tiene función propia: el modelo la usa dentro de la misma respuesta y el resultado llega
+        en el contenido, así que el loop del agente no cambia.
+        """
+        self._server_tools.append(definition)
+
+    def server_tool_names(self) -> list[str]:
+        return [str(definition["name"]) for definition in self._server_tools]
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
@@ -60,10 +72,11 @@ class ToolRegistry:
 
     def schemas(self) -> list[ToolParam]:
         """Definiciones de las tools en el formato que espera la API."""
-        return [
+        client_tools: list[Any] = [
             {"name": t.name, "description": t.description, "input_schema": t.input_schema}
             for t in self._tools.values()
         ]
+        return client_tools + list(self._server_tools)
 
     def execute(self, name: str, tool_input: dict[str, Any]) -> ToolResult:
         """Ejecuta una tool. Nunca lanza excepciones: los fallos vuelven como `is_error`."""

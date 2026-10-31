@@ -170,6 +170,7 @@ class ChatService:
         speaker: Speaker | None = None,
         memories: MemoryStore | None = None,
         purges: Sequence[Callable[[], int]] = (),
+        show_sources: bool = True,
     ) -> None:
         """`purges`: limpiezas diarias adicionales (por ejemplo, pendientes hechos hace tiempo)."""
         self._channel = channel
@@ -178,6 +179,7 @@ class ChatService:
         self._speaker = speaker
         self._memories = memories
         self._purges = purges
+        self._show_sources = show_sources  # enlaces de las fuentes de internet al final del texto
         self._speech_warned = False  # el aviso de "voz no disponible" se envía una sola vez
         self._store = store
         self._agent_factory = agent_factory
@@ -247,10 +249,12 @@ class ChatService:
         # La fecha va en cada mensaje: el system prompt no cambia dentro de una conversación.
         # La marca de nota de voz avisa al modelo de que el texto puede traer errores de transcripción.
         mark = f"{VOICE_MARK} " if message.voice is not None or message.transcribed else ""
-        reply = self._ask_agent(conversation, message.sender, f"[{self._now():%Y-%m-%d %H:%M}] {mark}{text}")
+        prompt = f"[{self._now():%Y-%m-%d %H:%M}] {mark}{text}"
+        reply, sources = self._ask_agent(conversation, message.sender, prompt)
         if self._should_speak(message.sender, by_voice=message.voice is not None):
-            self._send_voice_safely(message.sender, reply)
-        self._channel.send_text(message.sender, reply)  # el texto llega siempre, también con voz
+            self._send_voice_safely(message.sender, reply)  # sin los enlaces: no se leen en voz alta
+        # El texto llega siempre, también con voz.
+        self._channel.send_text(message.sender, reply + (format_sources(sources) if self._show_sources else ""))
         logger.info("Mensaje %s respondido.", message.id)
 
     def _read_text(self, message: IncomingMessage) -> str | None:
@@ -348,17 +352,23 @@ class ChatService:
         self._channel.acknowledge(answer)
         self._close_safely(answer.sender, answer.handle, VOICE_MODES[mode][2])
 
-    def _ask_agent(self, conversation: Conversation, sender: str, text: str) -> str:
+    def _ask_agent(
+        self, conversation: Conversation, sender: str, text: str
+    ) -> tuple[str, list[tuple[str, str]]]:
+        """Respuesta del agente y las fuentes de internet que citó (título, URL)."""
         agent = self._agent_factory(conversation.messages, conversation.system_prompt, self._confirmer_for(sender))
         started = time.monotonic()
         try:
             reply = agent.send(text)
-            # Solo el tiempo (incluye las tools y las confirmaciones): sirve para ver dónde se demora.
-            logger.info("Respuesta de la IA en %.1f s.", time.monotonic() - started)
-            return reply
+            # Solo tiempos y cantidades (incluye tools y confirmaciones): para ver dónde se demora y
+            # cuántas búsquedas (que se pagan aparte) se hicieron.
+            searches = getattr(agent, "last_web_searches", 0)
+            note = f" ({searches} búsqueda(s) en internet)" if searches else ""
+            logger.info("Respuesta de la IA en %.1f s%s.", time.monotonic() - started, note)
+            return reply, list(getattr(agent, "last_sources", []))
         except anthropic.APIError as exc:
             logger.error("Error de la API de Anthropic (%s).", type(exc).__name__)
-            return AI_ERROR_TEXT
+            return AI_ERROR_TEXT, []
         finally:
             conversation.messages = agent.history
             self._store.save(conversation)
@@ -442,6 +452,13 @@ class ChatService:
             self._channel.send_text(to, text)
         except ChannelError as exc:
             logger.error("Tampoco se pudo enviar el aviso de error: %s", exc)
+
+
+def format_sources(sources: Sequence[tuple[str, str]]) -> str:
+    """Enlaces al final de una respuesta que usó internet (texto plano: Telegram los vuelve enlaces)."""
+    if not sources:
+        return ""
+    return "\n\nFuentes:\n" + "\n".join(f"- {title}: {url}" for title, url in sources)
 
 
 def split_text(text: str, limit: int) -> list[str]:

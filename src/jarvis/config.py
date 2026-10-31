@@ -110,6 +110,16 @@ class WakeWordSettings:
 
 
 @dataclass(frozen=True)
+class WebSettings:
+    """Búsqueda en internet y lectura de enlaces (tools de Anthropic). `city`/`country` son opcionales."""
+
+    enabled: bool
+    city: str
+    country: str  # código ISO de dos letras, por ejemplo CO
+    max_searches: int = 5  # por mensaje (cada búsqueda se paga)
+
+
+@dataclass(frozen=True)
 class Settings:
     api_key: str
     model: str
@@ -121,6 +131,7 @@ class Settings:
     voice: VoiceSettings
     speech: SpeechSettings
     wake_word: WakeWordSettings
+    web: WebSettings
 
 
 def read_env() -> Mapping[str, str]:
@@ -148,6 +159,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         voice=load_voice_settings(env),
         speech=load_speech_settings(env),
         wake_word=load_wake_word_settings(env),
+        web=load_web_settings(env),
     )
 
 
@@ -263,6 +275,16 @@ def load_wake_word_settings(env: Mapping[str, str]) -> WakeWordSettings:
     return WakeWordSettings(
         enabled=value != "no", threshold=threshold, models_dir=DEFAULT_CONFIG_DIR / "voz" / "activacion"
     )
+
+
+def load_web_settings(env: Mapping[str, str]) -> WebSettings:
+    value = (_get(env, "JARVIS_BUSQUEDA") or "si").lower()
+    if value not in ("si", "sí", "no"):
+        raise ConfigError(f"JARVIS_BUSQUEDA='{value}' no es válido. Opciones: si, no.")
+    country = _get(env, "JARVIS_PAIS").upper()
+    if country and not re.fullmatch(r"[A-Z]{2}", country):
+        raise ConfigError(f"JARVIS_PAIS='{country}' no es válido: usa el código de dos letras, por ejemplo CO.")
+    return WebSettings(enabled=value != "no", city=_get(env, "JARVIS_CIUDAD"), country=country)
 
 
 def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:

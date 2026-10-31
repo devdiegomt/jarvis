@@ -80,10 +80,17 @@ def build_agent() -> tuple[Agent, CalendarSource]:
     agent = Agent(
         client=client,
         registry=build_registry(
-            calendar, confirm=ask_confirmation, reminders=reminders, now=now, tasks=tasks, memories=memories
+            calendar,
+            confirm=ask_confirmation,
+            reminders=reminders,
+            now=now,
+            tasks=tasks,
+            memories=memories,
+            web=settings.web,
+            timezone=settings.timezone,
         ),
         model=settings.model,
-        system_prompt=build_system_prompt(now().date(), memories.all()),
+        system_prompt=build_system_prompt(now().date(), memories.all(), settings.web),
         effort=settings.effort,
     )
     return agent, calendar
