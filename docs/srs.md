@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.0 (cubre hasta la v0.10.2)
+- **Versión del documento:** 2.1 (cubre hasta la v0.11)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -188,6 +188,18 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-52.** `jarvis probar-voz "texto"` dice el texto por los parlantes con la voz configurada (con
   Azure, sin respaldo, para ver sus errores); `estado` muestra el motor, la voz y el respaldo.
 
+### v0.11: búsqueda en internet
+
+- **RF-53.** JARVIS busca en internet cuando la respuesta depende de información actual (clima,
+  noticias, precios, horarios), con un máximo de 5 búsquedas por mensaje; no busca lo que ya está en
+  el calendario, los recordatorios, los pendientes o la memoria.
+- **RF-54.** Si el usuario comparte un enlace, JARVIS puede leerlo y resumirlo; solo abre enlaces que
+  aparecen en la conversación.
+- **RF-55.** En Telegram, las respuestas que usaron internet terminan con sus fuentes (título y
+  enlace); por voz no se leen enlaces, pero se dice de dónde sale el dato.
+- **RF-56.** La ubicación configurada (`JARVIS_CIUDAD`, `JARVIS_PAIS`, la zona horaria) mejora las
+  búsquedas locales; `JARVIS_BUSQUEDA=no` las desactiva y `estado` muestra si están activas.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -228,6 +240,10 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   registros solo anotan activaciones y duraciones. Mientras JARVIS habla, el micrófono se ignora.
 
 ### 4.3 Fiabilidad y rapidez
+
+- **RNF-09c.** Las búsquedas usan las tools de servidor de Anthropic (sin otro proveedor ni clave): las
+  consultas pasan por Anthropic, que ya recibe la conversación. Cada búsqueda se paga aparte, por eso
+  hay un tope por mensaje y el registro anota cuántas se hicieron (nunca qué se buscó).
 
 - **RNF-09b.** Las respuestas de chat y voz piden a Claude un esfuerzo bajo por defecto
   (`JARVIS_ESFUERZO`); Whisper y Piper se cargan al arrancar, y la transcripción usa búsqueda
@@ -283,4 +299,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-41 a RF-45 | `tasks.py`, `long_term_memory.py`, `tools/pendientes.py`, `tools/memoria.py`, `prompts.py`, `chat.py`, `summary.py`, `status.py` | `test_tasks.py`, `test_long_term_memory.py`, `test_chat.py`, `test_status.py` |
 | RF-46 a RF-49 | `wake_word.py`, `pc_voice.py`, `assistant.py`, `prompts.py`, `telegram/app.py`, `cli.py`, `status.py` | `test_pc_voice.py`, `test_status.py` |
 | RF-50 a RF-52 | `azure_speech.py`, `speech.py`, `config.py`, `cli.py`, `wake_word.py` | `test_azure_speech.py` |
+| RF-53 a RF-56 | `tools/internet.py`, `tools/registry.py`, `agent.py`, `chat.py`, `prompts.py`, `config.py`, `status.py` | `test_internet.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

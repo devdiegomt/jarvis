@@ -8,10 +8,11 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.10**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
+**v0.11**: lee tu Google Calendar (solo lectura), chateas con JARVIS por Telegram (también en
 segundo plano) escribiéndole o con notas de voz, y te responde también con voz; en el PC lo llamas
 con "Hey JARVIS" y te contesta en voz alta. Te crea recordatorios, lleva tu lista de pendientes,
-recuerda lo que le cuentas de ti entre conversaciones y te envía un resumen del día de lunes a
+recuerda lo que le cuentas de ti entre conversaciones, busca en internet lo que cambia (clima,
+noticias, precios) y te envía un resumen del día de lunes a
 viernes (por Telegram o Gmail). El envío de mensajes a
 terceros sigue simulado.
 Ver el roadmap completo en [`CLAUDE.md`](CLAUDE.md).
@@ -222,6 +223,22 @@ llega al volver, marcado como atrasado.
 Los recordatorios se guardan en tu equipo (`jarvis.db`); los ya enviados o cancelados se borran a
 los 30 días. Crear o cancelar un recordatorio no pide confirmación: es interno a JARVIS y siempre
 se puede deshacer. `uv run jarvis estado` muestra cuántos hay pendientes y la hora del próximo.
+
+## Búsqueda en internet
+
+Pregúntale lo que cambia con el tiempo: *"¿Va a llover hoy?"*, *"¿A cómo está el dólar?"*,
+*"¿Qué pasó con…?"*, *"¿A qué hora abre…?"*. JARVIS busca en internet cuando hace falta y, en
+Telegram, termina la respuesta con sus **Fuentes** (enlaces). También puedes pegarle un enlace y
+pedirle *"resúmeme esto"*.
+
+- Para que el clima y los lugares sean los de tu zona, pon tu ciudad en `.env`:
+  `JARVIS_CIUDAD=Zipaquirá` y `JARVIS_PAIS=CO`.
+- Usa la búsqueda de Anthropic (la misma API de Claude): no hay que crear cuentas ni claves nuevas.
+  Cada búsqueda cuesta aparte (unos 10 USD por cada 1000 búsquedas, más el texto leído), con un tope
+  de 5 búsquedas por mensaje; el registro anota cuántas se hicieron, nunca qué se buscó.
+- Solo busca cuando la información puede haber cambiado; lo de tu calendario, recordatorios,
+  pendientes y memoria lo responde sin internet. Solo abre enlaces que aparecen en la conversación.
+- Para desactivarla: `JARVIS_BUSQUEDA=no`.
 
 ## Pendientes y memoria
 
@@ -481,6 +498,8 @@ texto de tus mensajes.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | API key de Anthropic (obligatoria) | |
 | `JARVIS_MODEL` | Modelo de Claude | `claude-sonnet-5-5` |
+| `JARVIS_BUSQUEDA` | Búsqueda en internet y lectura de enlaces: `si` o `no` | `si` |
+| `JARVIS_CIUDAD` / `JARVIS_PAIS` | Tu ciudad y país (código de dos letras), para búsquedas locales | |
 | `JARVIS_ESFUERZO` | Cuánto razona Claude en el chat y la voz: `low` (rápido), `medium`, `high`, `xhigh`, `max` | `low` |
 | `JARVIS_TIMEZONE` | Zona horaria IANA | la del sistema |
 | `JARVIS_CALENDAR` | `sample` o `google` | `sample` |
