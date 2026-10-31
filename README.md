@@ -539,6 +539,10 @@ generar la voz (Piper). El registro anota cuánto tarda cada una, sin el conteni
 `uv run python -m jarvis estado` (líneas como *"Nota de voz de 4 s transcrita en 1.8 s"* o
 *"Respuesta de la IA en 3.2 s"*). Con `escuchar`, esos tiempos salen en la consola.
 
+Las llamadas a Telegram también se anotan (*"Telegram sendMessage en 0.25 s (conexión
+reutilizada)"*): JARVIS mantiene abierta la conexión y la reutiliza, así que solo la primera de cada
+respuesta paga el saludo inicial. El registro completo está en `~/.config/jarvis/logs/telegram.log`.
+
 - **La transcripción es lo más lento**: prueba un modelo menor, `JARVIS_WHISPER_MODELO=base` (más
   rápido, algo menos preciso), y vuelve a ejecutar `preparar-voz`.
 - **La IA es lo más lento**: `JARVIS_ESFUERZO=low` (por defecto) es lo más rápido; si las

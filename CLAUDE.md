@@ -63,8 +63,8 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   (direcciones o dominios) manejada hablando con JARVIS y visible con `/clientes`, revisión cada 2
   minutos (`JARVIS_CORREO_MINUTOS`), sin avisar correos viejos ni repetidos; buscar y leer correos a
   pedido; permiso `gmail.readonly`. Ver `docs/adr/018-avisos-de-correo.md`.
-- **Siguiente (pequeño):** reutilizar la conexión HTTPS con Telegram (hoy cada llamada abre una nueva y
-  suma unos segundos por respuesta).
+  v0.14.1: conexiones HTTPS con Telegram reutilizadas (una por hilo, `http.client`, reintento único
+  si Telegram cerró una inactiva) y tiempo de cada llamada en el registro. Ver `docs/adr/019-conexion-telegram-reutilizada.md`.
 - Después: el alojamiento (servidor, nube) se decidirá según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
@@ -76,8 +76,8 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 - Google Calendar API y Gmail API (`google-api-python-client`, `google-auth-oauthlib`):
   `calendar.events`, `gmail.readonly` (avisos de clientes) y, solo si el resumen va por Gmail, `gmail.send`
 - Modelo configurable por variable de entorno `JARVIS_MODEL` (default: `claude-sonnet-5-5`)
-- API de bots de Telegram vía `urllib` (long polling, sin webhook), con `truststore` para verificar
-  HTTPS con el almacén de certificados del sistema
+- API de bots de Telegram vía `http.client` con conexiones reutilizadas (long polling, sin webhook),
+  con `truststore` para verificar HTTPS con el almacén de certificados del sistema
 - `faster-whisper`, `piper-tts`, `openwakeword` y `sounddevice` (grupo opcional `voz`) para entender,
   responder y escuchar "Hey JARVIS" en el PC
 - Azure AI Speech (API REST vía `urllib` + `truststore`), opcional, para una voz más natural
@@ -121,7 +121,7 @@ jarvis/
 │   ├── assistant.py    # piezas comunes de los canales: almacenes, agente, Whisper y Piper (una vez)
 │   ├── chat.py         # chat independiente del canal: agente, confirmaciones, comandos, memoria
 │   ├── telegram/       # canal de Telegram
-│   │   ├── client.py   # API de bots (urllib): enviar, botones, getUpdates, errores
+│   │   ├── client.py   # API de bots: conexiones reutilizadas, enviar, botones, getUpdates, errores
 │   │   ├── bot.py      # ChatChannel de Telegram, lectura de mensajes (long polling), vinculación
 │   │   └── app.py      # comandos telegram, telegram-vincular, programar-telegram y quitar-telegram
 │   ├── tools/          # una tool por archivo + registro central

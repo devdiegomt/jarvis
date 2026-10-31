@@ -1,11 +1,16 @@
 """Cliente mínimo de la API de bots de Telegram (https://core.telegram.org/bots/api)."""
 
+import base64
+import http.client
 import json
+import logging
 import socket
-import uuid
 import ssl
-import urllib.error
+import threading
+import time
+import urllib.parse
 import urllib.request
+import uuid
 from collections.abc import Callable
 from functools import cache
 from typing import Any
@@ -27,6 +32,9 @@ Downloader = Callable[[str, float, int], bytes]
 # Sube un archivo: (URL, campos, (campo, nombre, tipo, contenido), tiempo máximo) → JSON de respuesta.
 Uploader = Callable[[str, dict[str, str], tuple[str, str, str, bytes], float], dict[str, Any]]
 UPLOAD_TIMEOUT_SECONDS = 60
+MAX_IDLE_SECONDS = 30  # más inactiva que esto, se abre una conexión nueva antes de usarla
+
+logger = logging.getLogger("jarvis.chat")
 
 
 class TelegramError(ChannelError):
@@ -130,13 +138,8 @@ def _result(response: dict[str, Any]) -> Any:
 
 def http_call(url: str, params: dict[str, Any], timeout: float) -> dict[str, Any]:
     """POST con JSON. Los errores nunca incluyen la URL, porque contiene el token del bot."""
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(params).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    return _send_json_request(request, timeout)
+    body = json.dumps(params).encode("utf-8")
+    return _post_json(url, body, {"Content-Type": "application/json"}, timeout)
 
 
 def http_upload(
@@ -155,47 +158,162 @@ def http_upload(
         + content
         + f"\r\n--{boundary}--\r\n".encode()
     )
-    request = urllib.request.Request(
-        url,
-        data=b"".join(parts),
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        method="POST",
-    )
-    return _send_json_request(request, timeout)
+    headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    return _post_json(url, b"".join(parts), headers, timeout)
 
 
-def _send_json_request(request: urllib.request.Request, timeout: float) -> dict[str, Any]:
+def _post_json(url: str, body: bytes, headers: dict[str, str], timeout: float) -> dict[str, Any]:
+    status, data = _request_or_explain("POST", url, body, headers, timeout)
     try:
-        with urllib.request.urlopen(request, timeout=timeout, context=_ssl_context()) as response:
-            return json.loads(response.read())
-    except urllib.error.HTTPError as exc:
-        # Telegram responde errores con JSON {"ok": false, "error_code": ..., "description": ...}.
-        try:
-            return json.loads(exc.read())
-        except ValueError:
-            raise _api_error(exc.code, "") from None
-    except urllib.error.URLError as exc:
-        raise _network_error(exc.reason) from None
-    except OSError as exc:  # incluye TimeoutError
-        raise _network_error(exc) from None
+        # Telegram responde también los errores con JSON {"ok": false, "error_code": ..., "description": ...}.
+        return json.loads(data)
+    except ValueError:
+        raise _api_error(status, "") from None
 
 
 def http_download(url: str, timeout: float, max_bytes: int) -> bytes:
     """GET de un archivo. Como en `http_call`, los errores nunca incluyen la URL (lleva el token)."""
-    try:
-        with urllib.request.urlopen(url, timeout=timeout, context=_ssl_context()) as response:
-            data = response.read(max_bytes + 1)
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429 or exc.code >= 500:
-            raise _api_error(exc.code, "") from None
-        raise TelegramError(f"Telegram no entregó el archivo ({exc.code}).") from None
-    except urllib.error.URLError as exc:
-        raise _network_error(exc.reason) from None
-    except OSError as exc:  # incluye TimeoutError
-        raise _network_error(exc) from None
+    status, data = _request_or_explain("GET", url, None, {}, timeout, max_bytes=max_bytes)
+    if status == 429 or status >= 500:
+        raise _api_error(status, "")
+    if status >= 400:
+        raise TelegramError(f"Telegram no entregó el archivo ({status}).")
     if len(data) > max_bytes:
         raise TelegramError("El archivo es demasiado grande para descargarlo (máximo 20 MB).")
     return data
+
+
+def _request_or_explain(
+    method: str,
+    url: str,
+    body: bytes | None,
+    headers: dict[str, str],
+    timeout: float,
+    max_bytes: int | None = None,
+) -> tuple[int, bytes]:
+    try:
+        return POOL.request(method, url, body, headers, timeout, max_bytes=max_bytes)
+    except (OSError, http.client.HTTPException) as exc:  # OSError incluye TimeoutError y errores de TLS
+        raise _network_error(exc) from None
+
+
+class ConnectionPool:
+    """Conexiones HTTPS que se mantienen abiertas y se reutilizan (una por hilo y servidor).
+
+    Abrir una conexión (TCP + saludo TLS) cuesta medio segundo o más por llamada; reutilizarla
+    ahorra ese tiempo en cada mensaje. Cada hilo tiene la suya, así la espera de mensajes nuevos
+    (long polling) no bloquea las respuestas ni los avisos.
+    """
+
+    def __init__(
+        self,
+        connect: Callable[[str, float], http.client.HTTPConnection] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        max_idle: float = MAX_IDLE_SECONDS,
+    ) -> None:
+        self._connect = connect or open_https_connection
+        self._clock = clock
+        self._max_idle = max_idle
+        self._local = threading.local()
+
+    def request(
+        self,
+        method: str,
+        url: str,
+        body: bytes | None,
+        headers: dict[str, str],
+        timeout: float,
+        max_bytes: int | None = None,
+    ) -> tuple[int, bytes]:
+        """Hace la petición y devuelve (código HTTP, cuerpo). Los fallos de red se propagan tal cual."""
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname or ""
+        path = parts.path + (f"?{parts.query}" if parts.query else "")
+        label = _label(parts.path)
+        while True:
+            conn, reused = self._connection(host, timeout)
+            started = self._clock()
+            try:
+                conn.request(method, path, body=body, headers=headers)
+                response = conn.getresponse()
+                data = response.read() if max_bytes is None else response.read(max_bytes + 1)
+            except _STALE_ERRORS:
+                self._close(host)
+                if reused:  # el servidor cerró la conexión inactiva antes de recibir el pedido
+                    continue
+                raise
+            except BaseException:
+                self._close(host)
+                raise
+            if response.will_close or not response.isclosed():  # cerrada por el servidor o sin leer completa
+                self._close(host)
+            else:
+                self._connections()[host] = (conn, self._clock())
+            if label != "getUpdates":  # la espera de mensajes dura hasta 30 s: no es lentitud
+                elapsed = self._clock() - started
+                kind = "reutilizada" if reused else "nueva"
+                logger.info("Telegram %s en %.2f s (conexión %s).", label, elapsed, kind)
+            return response.status, data
+
+    def close_all(self) -> None:
+        """Cierra las conexiones del hilo actual."""
+        for host in list(self._connections()):
+            self._close(host)
+
+    def _connection(self, host: str, timeout: float) -> tuple[http.client.HTTPConnection, bool]:
+        connections = self._connections()
+        current = connections.get(host)
+        if current is not None:
+            conn, last_used = current
+            if self._clock() - last_used <= self._max_idle:
+                conn.timeout = timeout
+                if conn.sock is not None:
+                    conn.sock.settimeout(timeout)
+                return conn, True
+            self._close(host)  # inactiva hace rato: el servidor probablemente ya la cerró
+        conn = self._connect(host, timeout)
+        connections[host] = (conn, self._clock())
+        return conn, False
+
+    def _close(self, host: str) -> None:
+        current = self._connections().pop(host, None)
+        if current is not None:
+            current[0].close()
+
+    def _connections(self) -> dict[str, tuple[http.client.HTTPConnection, float]]:
+        if not hasattr(self._local, "connections"):
+            self._local.connections = {}
+        return self._local.connections
+
+
+# La conexión inactiva se cerró del lado del servidor: se reintenta una vez con una nueva, sin
+# riesgo de duplicar un mensaje porque Telegram no llegó a recibirlo. Un tiempo agotado no entra aquí.
+_STALE_ERRORS = (http.client.RemoteDisconnected, BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+
+
+def _label(path: str) -> str:
+    """El método de la API para el registro (sin el token, que va antes en la ruta)."""
+    return "descarga" if path.startswith("/file/") else path.rsplit("/", 1)[-1]
+
+
+def open_https_connection(host: str, timeout: float) -> http.client.HTTPConnection:
+    """Conexión HTTPS verificada con el almacén del sistema; respeta el proxy del sistema, si hay."""
+    proxy = urllib.request.getproxies().get("https")
+    if proxy and not urllib.request.proxy_bypass(host):
+        target = urllib.parse.urlsplit(proxy if "://" in proxy else f"http://{proxy}")
+        conn = http.client.HTTPSConnection(
+            target.hostname or "", target.port or 8080, timeout=timeout, context=_ssl_context()
+        )
+        headers = {}
+        if target.username:
+            credentials = f"{urllib.parse.unquote(target.username)}:{urllib.parse.unquote(target.password or '')}"
+            headers["Proxy-Authorization"] = "Basic " + base64.b64encode(credentials.encode()).decode()
+        conn.set_tunnel(host, 443, headers=headers)
+        return conn
+    return http.client.HTTPSConnection(host, timeout=timeout, context=_ssl_context())
+
+
+POOL = ConnectionPool()
 
 
 @cache

@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.4 (cubre hasta la v0.14)
+- **Versión del documento:** 2.5 (cubre hasta la v0.14.1)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -279,6 +279,10 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 
 ### 4.3 Fiabilidad y rapidez
 
+- **RNF-09e.** Las conexiones HTTPS con Telegram se mantienen abiertas y se reutilizan (una por hilo),
+  para no repetir el saludo TCP + TLS en cada llamada; si Telegram cerró una conexión inactiva, se
+  reintenta una sola vez con una nueva, y nunca tras un tiempo agotado (no se duplican mensajes). El
+  registro anota cuánto tarda cada llamada (método y segundos, nunca el contenido ni el token).
 - **RNF-09d.** Los avisos se arman en código, sin IA (instantáneos y sin costo); el calendario se
   consulta como mucho cada 5 minutos y los avisos enviados se registran en `jarvis.db` (sin títulos)
   durante 30 días.

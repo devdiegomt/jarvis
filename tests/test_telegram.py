@@ -1,13 +1,12 @@
-import io
 import json
 import socket
 import ssl
-import urllib.error
 from typing import Any
 
 import pytest
 import truststore
 
+from connection_fakes import FakeResponse, fake_pool
 from jarvis.chat import ButtonAnswer, IncomingMessage, VoiceNote
 from jarvis.notify import NotificationError, NotificationNotAuthorizedError
 from jarvis.notify.telegram import TelegramNotifier
@@ -112,11 +111,7 @@ def test_api_errors(code: int, error_type: type) -> None:
 
 def test_http_errors_never_expose_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
     body = json.dumps({"ok": False, "error_code": 401, "description": "Unauthorized"}).encode()
-
-    def unauthorized(*_args: Any, **_kwargs: Any) -> Any:
-        raise urllib.error.HTTPError(f"https://api.telegram.org/bot{TOKEN}/getMe", 401, "x", {}, io.BytesIO(body))  # type: ignore[arg-type]
-
-    monkeypatch.setattr(client_module.urllib.request, "urlopen", unauthorized)
+    fake_pool(monkeypatch, [FakeResponse(401, body)])
 
     with pytest.raises(TelegramAuthError) as excinfo:
         TelegramClient(TOKEN).get_me()
@@ -124,14 +119,12 @@ def test_http_errors_never_expose_the_token(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_network_errors_are_retryable(monkeypatch: pytest.MonkeyPatch) -> None:
-    def offline(*_args: Any, **_kwargs: Any) -> Any:
-        raise urllib.error.URLError("sin red")
-
-    monkeypatch.setattr(client_module.urllib.request, "urlopen", offline)
+    fake_pool(monkeypatch, [ConnectionRefusedError(f"https://api.telegram.org/bot{TOKEN}")])
 
     with pytest.raises(TelegramConnectionError) as excinfo:
         TelegramClient(TOKEN).get_me()
-    assert excinfo.value.__cause__ is None  # sin la excepción original, que incluye la URL
+    assert excinfo.value.__cause__ is None  # sin la excepción original, que podría incluir la URL
+    assert TOKEN not in str(excinfo.value)
 
 
 @pytest.mark.parametrize(
@@ -149,10 +142,7 @@ def test_network_errors_are_retryable(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_network_errors_explain_the_cause(
     monkeypatch: pytest.MonkeyPatch, reason: Exception, error_type: type, expected: str
 ) -> None:
-    def failing(*_args: Any, **_kwargs: Any) -> Any:
-        raise urllib.error.URLError(reason)
-
-    monkeypatch.setattr(client_module.urllib.request, "urlopen", failing)
+    fake_pool(monkeypatch, [reason])
 
     with pytest.raises(error_type, match=expected) as excinfo:
         TelegramClient(TOKEN).get_me()
@@ -164,18 +154,13 @@ def test_certificate_errors_are_not_retried() -> None:
 
 
 def test_https_uses_the_operating_system_trust_store(monkeypatch: pytest.MonkeyPatch) -> None:
-    contexts: list[Any] = []
+    monkeypatch.setattr(client_module.urllib.request, "getproxies", dict)
 
-    def capture(_request: Any, timeout: float, context: Any) -> Any:
-        contexts.append(context)
-        return io.BytesIO(b'{"ok": true, "result": {}}')
+    conn = client_module.open_https_connection("api.telegram.org", 5)
 
-    monkeypatch.setattr(client_module.urllib.request, "urlopen", capture)
-
-    TelegramClient(TOKEN).get_me()
-
-    assert isinstance(contexts[0], truststore.SSLContext)
-    assert contexts[0].verify_mode == ssl.CERT_REQUIRED
+    assert conn.host == "api.telegram.org" and conn.port == 443
+    assert isinstance(conn._context, truststore.SSLContext)  # type: ignore[attr-defined]
+    assert conn._context.verify_mode == ssl.CERT_REQUIRED  # type: ignore[attr-defined]
 
 
 # --- Recepción de actualizaciones -------------------------------------------
@@ -364,31 +349,19 @@ def test_files_over_the_limit_are_not_downloaded() -> None:
 
 
 def test_file_download_errors_never_expose_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    url = f"https://api.telegram.org/file/bot{TOKEN}/voice/file_7.oga"
-
-    def not_found(*_args: Any, **_kwargs: Any) -> Any:
-        raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b""))  # type: ignore[arg-type]
-
-    monkeypatch.setattr(client_module.urllib.request, "urlopen", not_found)
+    fake_pool(monkeypatch, [FakeResponse(404, b"")])
 
     with pytest.raises(TelegramError) as excinfo:
-        client_module.http_download(url, 5, 100)
+        client_module.http_download(f"https://api.telegram.org/file/bot{TOKEN}/voice/file_7.oga", 5, 100)
     assert TOKEN not in str(excinfo.value)
     assert excinfo.value.__cause__ is None
 
 
-def test_file_download_uses_the_trust_store_and_enforces_the_size(monkeypatch: pytest.MonkeyPatch) -> None:
-    contexts: list[Any] = []
-
-    def capture(_url: str, timeout: float, context: Any) -> Any:
-        contexts.append(context)
-        return io.BytesIO(b"x" * 101)
-
-    monkeypatch.setattr(client_module.urllib.request, "urlopen", capture)
+def test_file_download_enforces_the_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_pool(monkeypatch, [FakeResponse(200, b"x" * 101)])
 
     with pytest.raises(TelegramError, match="demasiado grande"):
         client_module.http_download("https://api.telegram.org/file/botX/a.oga", 5, 100)
-    assert isinstance(contexts[0], truststore.SSLContext)
 
 
 def test_send_voice_uploads_the_audio() -> None:
@@ -406,20 +379,15 @@ def test_send_voice_uploads_the_audio() -> None:
 
 
 def test_upload_is_multipart_and_its_errors_never_expose_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    requests: list[Any] = []
     body = json.dumps({"ok": False, "error_code": 400, "description": "Bad Request: wrong file"}).encode()
-
-    def rejected(request: Any, timeout: float, context: Any) -> Any:
-        requests.append(request)
-        raise urllib.error.HTTPError(request.full_url, 400, "x", {}, io.BytesIO(body))  # type: ignore[arg-type]
-
-    monkeypatch.setattr(client_module.urllib.request, "urlopen", rejected)
+    connections = fake_pool(monkeypatch, [FakeResponse(400, body)])
 
     with pytest.raises(TelegramError) as excinfo:
         TelegramClient(TOKEN).send_voice(OWNER, b"OggS-datos")
 
     assert TOKEN not in str(excinfo.value)
-    sent = requests[0]
-    assert sent.get_header("Content-type").startswith("multipart/form-data; boundary=")
-    assert b'name="chat_id"\r\n\r\n987654321' in sent.data
-    assert b'name="voice"; filename="respuesta.ogg"\r\nContent-Type: audio/ogg\r\n\r\nOggS-datos' in sent.data
+    method, path, sent, headers = connections[0].requests[0]
+    assert method == "POST" and path == f"/bot{TOKEN}/sendVoice"
+    assert headers["Content-Type"].startswith("multipart/form-data; boundary=")
+    assert b'name="chat_id"\r\n\r\n987654321' in sent
+    assert b'name="voice"; filename="respuesta.ogg"\r\nContent-Type: audio/ogg\r\n\r\nOggS-datos' in sent
