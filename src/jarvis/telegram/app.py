@@ -28,6 +28,7 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.logs import FILE_ONLY, setup_logger
+from jarvis.long_term_memory import MemoryStore
 from jarvis.memory import ConversationStore
 from jarvis.prompts import build_chat_system_prompt
 from jarvis.reminder_delivery import ReminderDelivery
@@ -46,6 +47,7 @@ from jarvis.telegram.client import (
 )
 from jarvis.tools import Confirmer, build_registry
 from jarvis.speech import build_speaker, describe_speech
+from jarvis.tasks import TaskStore
 from jarvis.voice import build_transcriber, describe_voice
 
 LINK_TIMEOUT_SECONDS = 5 * 60
@@ -72,6 +74,8 @@ def run_telegram(scheduled: bool = False) -> None:
 
     store = ConversationStore(settings.summary.db_path, now=now)
     reminders = ReminderStore(settings.summary.db_path, now=now)
+    tasks = TaskStore(settings.summary.db_path, now=now)
+    memories = MemoryStore(settings.summary.db_path, now=now)
     anthropic_client = anthropic.Anthropic(api_key=settings.api_key)
     channel = TelegramChannel(client)
     delivery = ReminderDelivery(reminders, channel, telegram.owner_id, settings.timezone, now)
@@ -79,7 +83,9 @@ def run_telegram(scheduled: bool = False) -> None:
     def agent_factory(history: list, system_prompt: str, confirm: Confirmer) -> Agent:
         return Agent(
             client=anthropic_client,
-            registry=build_registry(calendar, confirm=confirm, reminders=reminders, now=now),
+            registry=build_registry(
+                calendar, confirm=confirm, reminders=reminders, now=now, tasks=tasks, memories=memories
+            ),
             model=settings.model,
             system_prompt=system_prompt,
             history=history,
@@ -89,11 +95,14 @@ def run_telegram(scheduled: bool = False) -> None:
         channel=channel,
         store=store,
         agent_factory=agent_factory,
-        system_prompt=lambda: build_chat_system_prompt(now().date()),
+        # Se llama solo al empezar una conversación: la memoria entra al día en cada conversación nueva.
+        system_prompt=lambda: build_chat_system_prompt(now().date(), memories.all()),
         now=now,
         button_handler=delivery.handle_button,
         transcriber=build_transcriber(settings.voice),
         speaker=build_speaker(settings.speech),
+        memories=memories,
+        purges=[tasks.purge_old],
     )
     poller = TelegramPoller(client, telegram.owner_id, deliver=chat.submit, mark_processed=store.mark_processed)
     chat.start()

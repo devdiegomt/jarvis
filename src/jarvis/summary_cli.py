@@ -22,6 +22,7 @@ from jarvis.logs import FILE_ONLY, setup_logger
 from jarvis.notify import ConsoleNotifier, NotificationError, Notifier
 from jarvis.storage import SummaryLog
 from jarvis.summary import DailySummary, run_with_retries, send_daily_summary
+from jarvis.tasks import TaskStore
 
 # En modo programado se reintenta ante fallos temporales (por ejemplo, sin red al encender).
 SCHEDULED_ATTEMPTS = 4  # el primero + 3 reintentos
@@ -48,6 +49,11 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
     calendar = _build_calendar_or_exit(settings)
     notifier = ConsoleNotifier() if dry_run else _build_notifier(settings)
     day = datetime.now(settings.timezone).date()
+    db_path = settings.summary.db_path
+    # En modo de prueba solo se leen los pendientes si la base de datos ya existe (no se crea).
+    tasks = None
+    if not dry_run or db_path.exists():
+        tasks = TaskStore(db_path, now=lambda: datetime.now(settings.timezone))
 
     def attempt() -> DailySummary | None:
         return send_daily_summary(
@@ -56,9 +62,10 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
             notifier=notifier,
             client=anthropic.Anthropic(api_key=settings.api_key),
             model=settings.model,
-            log=None if dry_run else SummaryLog(settings.summary.db_path),
+            log=None if dry_run else SummaryLog(db_path),
             now=lambda: datetime.now(settings.timezone),
             force=force,
+            tasks=tasks,
         )
 
     def on_retry(attempt_number: int, exc: Exception) -> None:

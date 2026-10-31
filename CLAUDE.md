@@ -34,9 +34,11 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   de motor. Ver `docs/adr/009-notas-de-voz-whisper-local.md`.
 - **v0.8.1 (hecha):** respuestas con voz generadas en el PC con Piper (interfaz `Speaker`), en espejo
   por defecto y configurables con `/voz`; el texto llega siempre. Ver `docs/adr/010-respuestas-con-voz-piper.md`.
-- **v0.9 (siguiente):** pendientes y memoria a largo plazo.
-- Después, en este orden: "Oye JARVIS" en el PC (palabra de
-  activación); búsqueda en internet; escribir en el calendario; avisos proactivos; Gmail (avisos
+- **v0.9 (hecha):** pendientes (con fecha límite, en el resumen diario) y memoria a largo plazo:
+  datos del usuario guardados por iniciativa del modelo, añadidos al system prompt de cada
+  conversación nueva y visibles con `/memoria`. Ver `docs/adr/011-pendientes-y-memoria-a-largo-plazo.md`.
+- **v0.10 (siguiente):** "Oye JARVIS" en el PC (palabra de activación).
+- Después, en este orden: búsqueda en internet; escribir en el calendario; avisos proactivos; Gmail (avisos
   de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
@@ -77,6 +79,8 @@ jarvis/
 │   ├── memory.py       # SQLite: conversaciones del chat, retención, duplicados y preferencias (/voz)
 │   ├── reminders.py    # SQLite: recordatorios (crear, cancelar, posponer, vencidos)
 │   ├── reminder_delivery.py # entrega de recordatorios por el chat y sus botones
+│   ├── tasks.py        # SQLite: pendientes (con fecha límite opcional)
+│   ├── long_term_memory.py # SQLite: memoria a largo plazo (datos del usuario, sin caducidad)
 │   ├── confirmation.py # interpretación de respuestas s/n, común a todos los canales
 │   ├── voice.py        # notas de voz: Transcriber (interfaz), Whisper local y descarga del modelo
 │   ├── speech.py       # respuestas con voz: Speaker (interfaz), Piper local, OGG/Opus y descarga
@@ -89,6 +93,8 @@ jarvis/
 │   │   ├── __init__.py # tools integradas y build_registry()
 │   │   ├── registry.py # registro: nombre -> (schema, función), confirmación y errores
 │   │   ├── recordatorios.py # crear_recordatorio, listar_recordatorios, cancelar_recordatorio
+│   │   ├── pendientes.py   # agregar, listar, completar y borrar pendientes
+│   │   ├── memoria.py      # recordar_dato, listar_datos, olvidar_dato
 │   │   └── ...         # reuniones.py, mensajes.py
 │   └── cli.py          # punto de entrada por consola (chat de consola y subcomandos)
 ├── tests/
@@ -127,10 +133,14 @@ jarvis/
 - Mantener `.env.example` actualizado con los nombres de las variables, sin valores reales.
 - Toda tool que tenga efectos externos (enviar mensajes, crear eventos, borrar algo) debe pedir
   confirmación al usuario antes de ejecutarse. Las tools de solo lectura no la necesitan, ni las
-  que solo cambian datos internos de JARVIS y se pueden deshacer (por ejemplo, recordatorios).
+  que solo cambian datos internos de JARVIS y se pueden deshacer (por ejemplo, recordatorios,
+  pendientes o datos de la memoria).
 - No loguear contenido sensible (mensajes completos, datos de clientes) en producción. El historial
   de conversaciones se guarda solo en el equipo y se borra a los 30 días. Los registros usan
   `jarvis.logs` (rotativos).
+- La memoria a largo plazo se guarda solo en el equipo y no caduca: el usuario la ve con `/memoria`
+  y la borra cuando quiera. Nunca guarda contraseñas ni números largos (tarjetas, cuentas). Entra en
+  el system prompt solo al empezar una conversación nueva (no se edita la conversación en curso).
 - Las tareas programadas corren solo con la sesión del usuario iniciada; nunca guardar su contraseña
   de Windows en el Programador de tareas.
 - El audio de las notas de voz se procesa en memoria y no se guarda en disco ni sale del PC. Las

@@ -20,6 +20,7 @@ from jarvis.chat import (
     TIMEOUT_MARK,
     WELCOME_TEXT,
     HEARD_TEMPLATE,
+    NO_MEMORIES_TEXT,
     SPEECH_DISABLED_TEXT,
     VOICE_DISABLED_TEXT,
     VOICE_DOWNLOAD_ERROR_TEXT,
@@ -32,6 +33,7 @@ from jarvis.chat import (
     VoiceNote,
     split_text,
 )
+from jarvis.long_term_memory import MemoryStore
 from jarvis.memory import ConversationStore
 from jarvis.tools import Confirmer, Tool, ToolRegistry
 from jarvis.speech import SpeechError, SpeechUnavailableError
@@ -547,3 +549,42 @@ def test_missing_voice_is_explained_only_once(tmp_path: Path) -> None:
 
     assert setup.channel.sent.count("Falta la voz.") == 1
     assert setup.channel.sent[-1] == "Respuesta 1."
+
+
+# --- Memoria a largo plazo --------------------------------------------------
+
+
+def test_memory_command_lists_what_jarvis_remembers_without_the_ai(tmp_path: Path) -> None:
+    memories = MemoryStore(tmp_path / "jarvis.db", now=lambda: NOW)
+    memories.add("Su socia se llama Laura.")
+    setup = Setup(tmp_path, [], memories=memories)
+
+    setup.message("/memoria")
+    setup.process()
+
+    assert setup.channel.sent == [
+        "Esto es lo que recuerdo de ti:\n\n1. Su socia se llama Laura.\n\n"
+        "Para que olvide algo, dime por ejemplo «olvida el 1»."
+    ]
+    assert setup.anthropic.messages.calls == []
+
+
+def test_memory_command_when_empty(tmp_path: Path) -> None:
+    setup = Setup(tmp_path, [], memories=MemoryStore(tmp_path / "jarvis.db", now=lambda: NOW))
+
+    setup.message("/memoria")
+    setup.process()
+
+    assert setup.channel.sent == [NO_MEMORIES_TEXT]
+
+
+def test_extra_purges_run_daily(tmp_path: Path) -> None:
+    calls: list[str] = []
+    setup = Setup(tmp_path, [text_response("Hola."), text_response("Otra vez.")], purges=[lambda: calls.append("x") or 0])
+
+    setup.message("Hola")
+    setup.process()
+    setup.message("Hola de nuevo")
+    setup.process()
+
+    assert calls == ["x"]  # una vez al día, no en cada mensaje

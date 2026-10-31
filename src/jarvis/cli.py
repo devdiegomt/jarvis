@@ -33,8 +33,10 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.confirmation import CONFIRMATION_QUESTION, parse_yes_no
+from jarvis.long_term_memory import MemoryStore
 from jarvis.prompts import build_system_prompt
 from jarvis.reminders import ReminderStore
+from jarvis.tasks import TaskStore
 from jarvis.tools import build_registry
 
 EXIT_COMMAND = "salir"
@@ -63,12 +65,19 @@ def build_agent() -> tuple[Agent, CalendarSource]:
         return datetime.now(settings.timezone)
 
     # Los recordatorios creados aquí los envía el proceso de Telegram.
-    reminders = ReminderStore(settings.summary.db_path, now=now)
+    db_path = settings.summary.db_path
+    reminders, tasks, memories = (
+        ReminderStore(db_path, now=now),
+        TaskStore(db_path, now=now),
+        MemoryStore(db_path, now=now),
+    )
     agent = Agent(
         client=client,
-        registry=build_registry(calendar, confirm=ask_confirmation, reminders=reminders, now=now),
+        registry=build_registry(
+            calendar, confirm=ask_confirmation, reminders=reminders, now=now, tasks=tasks, memories=memories
+        ),
         model=settings.model,
-        system_prompt=build_system_prompt(datetime.now(settings.timezone).date()),
+        system_prompt=build_system_prompt(now().date(), memories.all()),
     )
     return agent, calendar
 

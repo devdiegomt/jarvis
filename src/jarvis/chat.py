@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Protocol
@@ -19,6 +19,7 @@ import anthropic
 
 from jarvis.agent import Agent
 from jarvis.confirmation import parse_yes_no
+from jarvis.long_term_memory import MemoryStore
 from jarvis.memory import Conversation, ConversationStore
 from jarvis.speech import Speaker, SpeechError, SpeechUnavailableError
 from jarvis.tools import Confirmer
@@ -35,7 +36,8 @@ WELCOME_TEXT = (
 HELP_TEXT = (
     "Pregúntame, por ejemplo: «¿Qué tengo hoy?» o «Recuérdame a las 5 llamar a Laura». "
     "También entiendo notas de voz.\n\n"
-    "/nuevo: empezar una conversación nueva\n/voz: elegir cuándo te respondo con voz\n/ayuda: ver esta ayuda"
+    "/nuevo: empezar una conversación nueva\n/voz: elegir cuándo te respondo con voz\n"
+    "/memoria: ver lo que recuerdo de ti\n/ayuda: ver esta ayuda"
 )
 NEW_CONVERSATION_TEXT = "Listo, empezamos una conversación nueva."
 ONLY_TEXT_TEXT = "Por ahora entiendo mensajes de texto y notas de voz."
@@ -45,6 +47,11 @@ VOICE_DOWNLOAD_ERROR_TEXT = "No pude descargar la nota de voz. Inténtalo de nue
 VOICE_EMPTY_TEXT = "No logré entender nada en la nota de voz. ¿Me lo repites o me lo escribes?"
 HEARD_TEMPLATE = "🎙 Entendí: «{}»"
 VOICE_MARK = "(nota de voz)"
+NO_MEMORIES_TEXT = (
+    "Aún no recuerdo nada de ti. Cuéntame cosas que quieras que tenga presentes "
+    "(personas, preferencias, rutinas) y las iré anotando."
+)
+MEMORIES_FOOTER = "Para que olvide algo, dime por ejemplo «olvida el {id}»."
 SPEECH_DISABLED_TEXT = "Las respuestas con voz están desactivadas (JARVIS_RESPUESTA_VOZ=no)."
 
 # Cuándo responder con voz (comando /voz). "espejo": solo si el usuario envió una nota de voz.
@@ -73,6 +80,7 @@ COMMANDS = {
     "start": "Empezar",
     "nuevo": "Conversación nueva",
     "voz": "Elegir cuándo responder con voz",
+    "memoria": "Ver lo que JARVIS recuerda de ti",
     "ayuda": "Ver la ayuda",
 }
 
@@ -159,11 +167,16 @@ class ChatService:
         button_handler: ButtonHandler | None = None,
         transcriber: Transcriber | None = None,
         speaker: Speaker | None = None,
+        memories: MemoryStore | None = None,
+        purges: Sequence[Callable[[], int]] = (),
     ) -> None:
+        """`purges`: limpiezas diarias adicionales (por ejemplo, pendientes hechos hace tiempo)."""
         self._channel = channel
         self._button_handler = button_handler
         self._transcriber = transcriber
         self._speaker = speaker
+        self._memories = memories
+        self._purges = purges
         self._speech_warned = False  # el aviso de "voz no disponible" se envía una sola vez
         self._store = store
         self._agent_factory = agent_factory
@@ -224,6 +237,9 @@ class ChatService:
         if command == "/voz":
             self._ask_voice_mode(message.sender)
             return
+        if command == "/memoria" and self._memories is not None:
+            self._channel.send_text(message.sender, self._memories_text())
+            return
 
         self._show_typing(message.sender)
         conversation = self._store.load_active(self._channel.name, message.sender, self._system_prompt)
@@ -275,6 +291,15 @@ class ChatService:
             return None
         self._channel.send_text(sender, HEARD_TEMPLATE.format(text))
         return text
+
+    def _memories_text(self) -> str:
+        """Lo que JARVIS recuerda, sin pasar por la IA."""
+        assert self._memories is not None
+        memories = self._memories.all()
+        if not memories:
+            return NO_MEMORIES_TEXT
+        lines = "\n".join(f"{memory.id}. {memory.text}" for memory in memories)
+        return f"Esto es lo que recuerdo de ti:\n\n{lines}\n\n{MEMORIES_FOOTER.format(id=memories[0].id)}"
 
     def _should_speak(self, sender: str, by_voice: bool) -> bool:
         if self._speaker is None:
@@ -388,6 +413,8 @@ class ChatService:
             self._last_purge = now
             if deleted:
                 logger.info("Borradas %d conversaciones antiguas.", deleted)
+            for purge in self._purges:
+                purge()
 
     def _show_typing(self, to: str) -> None:
         """Mostrar "escribiendo…" es cosmético: si falla, se sigue."""
