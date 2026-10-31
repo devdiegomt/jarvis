@@ -44,6 +44,8 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   v0.10.1: respuestas más rápidas: esfuerzo bajo de Claude en chat y voz (`JARVIS_ESFUERZO`),
   Whisper con búsqueda simple, Whisper y Piper precargados al arrancar, cierre del pedido tras
   0,7 s de silencio y tiempos de cada etapa en el registro. Ver `docs/adr/013-respuestas-rapidas.md`.
+  v0.10.2: voz de Azure AI Speech (`JARVIS_RESPUESTA_VOZ=azure`, Salomé por defecto) vía API REST,
+  con Piper de respaldo, y `jarvis probar-voz`. Ver `docs/adr/014-voz-de-azure.md`.
 - **v0.11 (siguiente):** búsqueda en internet.
 - Después, en este orden: escribir en el calendario; avisos proactivos; Gmail (avisos
   de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
@@ -61,6 +63,7 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
   HTTPS con el almacén de certificados del sistema
 - `faster-whisper`, `piper-tts`, `openwakeword` y `sounddevice` (grupo opcional `voz`) para entender,
   responder y escuchar "Hey JARVIS" en el PC
+- Azure AI Speech (API REST vía `urllib` + `truststore`), opcional, para una voz más natural
 - SQLite para persistencia local (más adelante Postgres)
 - `python-dotenv` para configuración, `pytest` para tests
 - Gestión de dependencias con `uv` y `pyproject.toml`
@@ -92,6 +95,7 @@ jarvis/
 │   ├── confirmation.py # interpretación de respuestas s/n, común a todos los canales
 │   ├── voice.py        # notas de voz: Transcriber (interfaz), Whisper local y descarga del modelo
 │   ├── speech.py       # respuestas con voz: Speaker (interfaz), Piper local, OGG/Opus y descarga
+│   ├── azure_speech.py # voz de Azure AI Speech (API REST), con Piper de respaldo
 │   ├── wake_word.py    # "Hey JARVIS": WakeWordDetector (interfaz), openWakeWord y descarga de modelos
 │   ├── pc_voice.py     # voz en el PC: canal de chat por parlantes, grabación del pedido y escucha
 │   ├── assistant.py    # piezas comunes de los canales: almacenes, agente, Whisper y Piper (una vez)
@@ -124,7 +128,7 @@ jarvis/
   Agregar una tool nueva no debe requerir tocar `agent.py`.
 - El loop del agente tiene un límite máximo de iteraciones para evitar ciclos infinitos.
 - Errores de una tool se devuelven al modelo como resultado con `is_error`, no rompen el programa.
-- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram, Whisper, Piper) y al
+- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram, Whisper, Piper, Azure) y al
   sistema (Programador de tareas) se mockean en los tests. Ningún test escribe en `~/.config/jarvis`
   (`tests/conftest.py` lo redirige a una carpeta temporal).
 - Al terminar una versión: actualizar este archivo (roadmap) y agregar un ADR si hubo una decisión relevante.
@@ -155,7 +159,8 @@ jarvis/
 - Las tareas programadas corren solo con la sesión del usuario iniciada; nunca guardar su contraseña
   de Windows en el Programador de tareas.
 - El audio de las notas de voz se procesa en memoria y no se guarda en disco ni sale del PC. Las
-  respuestas con voz también se generan en el PC.
+  respuestas con voz se generan en el PC con Piper; solo si el usuario elige Azure, su texto se
+  envía a Microsoft (la clave, en `.env`, nunca en registros ni errores).
 - "Hey JARVIS" (micrófono siempre abierto) viene apagado por defecto. El audio solo se analiza en
   memoria; se graba únicamente el pedido tras la palabra de activación, sin escribirlo en disco, y
   el micrófono se ignora mientras JARVIS habla. Los registros nunca guardan lo que se dijo.
@@ -170,5 +175,6 @@ jarvis/
 - Telegram en segundo plano: `uv run jarvis programar-telegram` / `uv run jarvis quitar-telegram`
 - Notas de voz y "Hey JARVIS" (una vez): `uv run jarvis preparar-voz`
 - Probar "Hey JARVIS" en el PC: `uv run jarvis escuchar`
+- Probar la voz: `uv run jarvis probar-voz "texto"`
 - Estado: `uv run jarvis estado`
 - Tests: `uv run pytest` (en la CI, sin el grupo de voz)

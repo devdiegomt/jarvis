@@ -276,13 +276,53 @@ Por defecto JARVIS responde **en espejo**: con voz (y el texto debajo) cuando le
 escrito cuando le escribes. Con **/voz** eliges entre *Si me hablas*, *Siempre* o *Nunca*; tu
 elección se guarda.
 
-- La voz se genera en tu PC con Piper: el texto de las respuestas no sale del equipo.
+- Por defecto la voz se genera en tu PC con Piper: el texto de las respuestas no sale del equipo.
+  Para una voz más natural, usa la de Azure (sección siguiente).
 - Se leen hasta unos 1000 caracteres (sin enlaces ni emojis); el texto completo llega siempre por
   escrito. Si la voz falla, la respuesta llega igual por escrito.
 - Para cambiar de voz, escucha las muestras en <https://rhasspy.github.io/piper-samples/>, pon su
   nombre en `.env` (por ejemplo `JARVIS_PIPER_VOZ=es_AR-daniela-high`) y vuelve a ejecutar
   `preparar-voz`.
 - Para desactivarlas: `JARVIS_RESPUESTA_VOZ=no`.
+- Para escuchar cómo suena la voz configurada, sin pasar por Telegram:
+  `uv run python -m jarvis probar-voz "Hola, soy JARVIS"`.
+
+### Voz de Azure (más natural)
+
+Las voces neuronales de Microsoft (Azure AI Speech) suenan casi humanas, y hay voces con acento
+colombiano: **Salomé** (`es-CO-SalomeNeural`, la predeterminada) y **Gonzalo**
+(`es-CO-GonzaloNeural`). El plan gratuito incluye 0,5 millones de caracteres al mes, mucho más de lo
+que suele usar JARVIS; al llegar al límite se frena (no cobra) y JARVIS responde con Piper.
+
+**Privacidad:** con Azure, el texto de las respuestas habladas se envía a Microsoft para
+convertirlo en voz (tu voz no: la transcripción sigue en el PC).
+
+1. Crea una cuenta en <https://portal.azure.com> (Microsoft suele pedir una tarjeta solo para
+   verificar tu identidad).
+2. En el buscador de arriba escribe **Speech** y elige **Speech services** → **Crear**:
+   - **Grupo de recursos:** crea uno nuevo, por ejemplo `jarvis`.
+   - **Región:** la más cercana (por ejemplo, **East US**).
+   - **Nombre:** cualquiera, por ejemplo `jarvis-voz`.
+   - **Plan de tarifa:** **Free F0**.
+   - Pulsa **Revisar y crear** → **Crear**, y luego **Ir al recurso**.
+3. En el recurso, abre **Claves y punto de conexión** (*Keys and Endpoint*) y copia la **Clave 1**
+   y la **Ubicación/Región** (por ejemplo `eastus`).
+4. En tu `.env`:
+
+   ```
+   JARVIS_RESPUESTA_VOZ=azure
+   AZURE_SPEECH_KEY=la-clave-que-copiaste
+   AZURE_SPEECH_REGION=eastus
+   JARVIS_AZURE_VOZ=es-CO-SalomeNeural
+   ```
+
+5. Pruébala: `uv run python -m jarvis probar-voz`. Si algo está mal (clave, región, voz), lo dice.
+   Después reinicia JARVIS (`quitar-telegram` y `programar-telegram`).
+
+Piper sigue de respaldo: si no hay internet o Azure falla, JARVIS responde con Piper (si lo
+descargaste con `preparar-voz`), y si tampoco, por escrito. La clave nunca aparece en los registros.
+Más voces en español: busca `es-` en la
+[lista de voces de Azure](https://learn.microsoft.com/azure/ai-services/speech-service/language-support?tabs=tts).
 
 ### Privacidad y límites
 
@@ -455,8 +495,11 @@ texto de tus mensajes.
 | `TELEGRAM_OWNER_ID` | Tu ID de Telegram, el único que JARVIS atiende (`telegram-vincular`) | |
 | `JARVIS_TRANSCRIPCION` | Notas de voz: `local` (Whisper en el PC) o `no` (desactivadas) | `local` |
 | `JARVIS_WHISPER_MODELO` | Modelo de Whisper: `tiny`, `base`, `small`, `medium`, `large-v3-turbo`… | `small` |
-| `JARVIS_RESPUESTA_VOZ` | Respuestas con voz: `local` (Piper en el PC) o `no` (desactivadas) | `local` |
-| `JARVIS_PIPER_VOZ` | Voz de Piper (`<idioma>-<nombre>-<calidad>`) | `es_MX-ald-medium` |
+| `JARVIS_RESPUESTA_VOZ` | Respuestas con voz: `local` (Piper en el PC), `azure` (voz de Microsoft) o `no` | `local` |
+| `JARVIS_PIPER_VOZ` | Voz de Piper (`<idioma>-<nombre>-<calidad>`); con Azure, la de respaldo | `es_MX-ald-medium` |
+| `AZURE_SPEECH_KEY` | Con `JARVIS_RESPUESTA_VOZ=azure`: clave del recurso Speech | |
+| `AZURE_SPEECH_REGION` | Con Azure: región del recurso (por ejemplo `eastus`) | |
+| `JARVIS_AZURE_VOZ` | Con Azure: nombre de la voz | `es-CO-SalomeNeural` |
 | `JARVIS_PALABRA_ACTIVACION` | "Hey JARVIS" en el PC, en segundo plano: `si` o `no` | `no` |
 | `JARVIS_ACTIVACION_UMBRAL` | Sensibilidad de "Hey JARVIS" (0 a 1; más alto, menos activaciones por error) | `0.5` |
 
