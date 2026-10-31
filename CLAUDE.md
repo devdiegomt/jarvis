@@ -37,8 +37,12 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
 - **v0.9 (hecha):** pendientes (con fecha límite, en el resumen diario) y memoria a largo plazo:
   datos del usuario guardados por iniciativa del modelo, añadidos al system prompt de cada
   conversación nueva y visibles con `/memoria`. Ver `docs/adr/011-pendientes-y-memoria-a-largo-plazo.md`.
-- **v0.10 (siguiente):** "Oye JARVIS" en el PC (palabra de activación).
-- Después, en este orden: búsqueda en internet; escribir en el calendario; avisos proactivos; Gmail (avisos
+- **v0.10 (hecha):** "Hey JARVIS" en el PC con openWakeWord (interfaz `WakeWordDetector`): tono,
+  grabación hasta el silencio, Whisper, chat por un canal propio (`PcVoiceChannel`) y respuesta por
+  los parlantes con Piper; dentro del proceso en segundo plano, apagado por defecto
+  (`JARVIS_PALABRA_ACTIVACION`), y `jarvis escuchar` para probarlo. Ver `docs/adr/012-hey-jarvis-en-el-pc.md`.
+- **v0.11 (siguiente):** búsqueda en internet.
+- Después, en este orden: escribir en el calendario; avisos proactivos; Gmail (avisos
   de clientes). El alojamiento (servidor, nube) se decidirá según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
@@ -52,7 +56,8 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 - Modelo configurable por variable de entorno `JARVIS_MODEL` (default: `claude-sonnet-5-5`)
 - API de bots de Telegram vía `urllib` (long polling, sin webhook), con `truststore` para verificar
   HTTPS con el almacén de certificados del sistema
-- `faster-whisper` y `piper-tts` (grupo opcional `voz`) para entender y responder con voz en el PC
+- `faster-whisper`, `piper-tts`, `openwakeword` y `sounddevice` (grupo opcional `voz`) para entender,
+  responder y escuchar "Hey JARVIS" en el PC
 - SQLite para persistencia local (más adelante Postgres)
 - `python-dotenv` para configuración, `pytest` para tests
 - Gestión de dependencias con `uv` y `pyproject.toml`
@@ -84,6 +89,9 @@ jarvis/
 │   ├── confirmation.py # interpretación de respuestas s/n, común a todos los canales
 │   ├── voice.py        # notas de voz: Transcriber (interfaz), Whisper local y descarga del modelo
 │   ├── speech.py       # respuestas con voz: Speaker (interfaz), Piper local, OGG/Opus y descarga
+│   ├── wake_word.py    # "Hey JARVIS": WakeWordDetector (interfaz), openWakeWord y descarga de modelos
+│   ├── pc_voice.py     # voz en el PC: canal de chat por parlantes, grabación del pedido y escucha
+│   ├── assistant.py    # piezas comunes de los canales: almacenes, agente, Whisper y Piper (una vez)
 │   ├── chat.py         # chat independiente del canal: agente, confirmaciones, comandos, memoria
 │   ├── telegram/       # canal de Telegram
 │   │   ├── client.py   # API de bots (urllib): enviar, botones, getUpdates, errores
@@ -145,6 +153,9 @@ jarvis/
   de Windows en el Programador de tareas.
 - El audio de las notas de voz se procesa en memoria y no se guarda en disco ni sale del PC. Las
   respuestas con voz también se generan en el PC.
+- "Hey JARVIS" (micrófono siempre abierto) viene apagado por defecto. El audio solo se analiza en
+  memoria; se graba únicamente el pedido tras la palabra de activación, sin escribirlo en disco, y
+  el micrófono se ignora mientras JARVIS habla. Los registros nunca guardan lo que se dijo.
 
 ## Comandos
 - Instalar: `uv sync`
@@ -154,6 +165,7 @@ jarvis/
 - Programar / quitar el resumen: `uv run jarvis programar-resumen` / `uv run jarvis quitar-resumen`
 - Telegram: `uv run jarvis telegram` (la primera vez, `uv run jarvis telegram-vincular`)
 - Telegram en segundo plano: `uv run jarvis programar-telegram` / `uv run jarvis quitar-telegram`
-- Notas de voz (una vez): `uv run jarvis preparar-voz`
+- Notas de voz y "Hey JARVIS" (una vez): `uv run jarvis preparar-voz`
+- Probar "Hey JARVIS" en el PC: `uv run jarvis escuchar`
 - Estado: `uv run jarvis estado`
 - Tests: `uv run pytest` (en la CI, sin el grupo de voz)

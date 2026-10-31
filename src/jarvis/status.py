@@ -20,6 +20,7 @@ from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskIn
 from jarvis.speech import describe_speech
 from jarvis.tasks import TaskStore
 from jarvis.voice import describe_voice
+from jarvis.wake_word import describe_wake_word
 
 LOG_LINES = 5
 
@@ -86,6 +87,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
         lines.append(f"Telegram: ⚠ {exc}")
     lines.append(f"Notas de voz: {describe_voice(settings.voice)}")
     lines.append(f"Respuestas con voz: {describe_speech(settings.speech)}")
+    lines.append(f"Hey JARVIS en el PC: {describe_wake_word(settings)}")
 
     # Solo cantidades y fechas: el texto de recordatorios, pendientes y recuerdos no se muestra.
     # `estado` solo lee: si la base de datos aún no existe, no la crea.

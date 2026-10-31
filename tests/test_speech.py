@@ -240,9 +240,10 @@ def test_failed_download_leaves_no_partial_files(tmp_path: Path, fake_piper: typ
 
 
 def prepare(monkeypatch: pytest.MonkeyPatch, installed: bool = True) -> None:
-    # Solo la voz: la transcripción se prueba en test_voice.py.
+    # Solo la voz: la transcripción se prueba en test_voice.py y "Hey JARVIS" en test_pc_voice.py.
     monkeypatch.setattr(cli, "read_env", lambda: {"JARVIS_TRANSCRIPCION": "no"})
     monkeypatch.setattr("jarvis.speech.piper_installed", lambda: installed)
+    monkeypatch.setattr(cli, "_prepare_wake_word", lambda _wake: True)
     cli.main(["preparar-voz"])
 
 

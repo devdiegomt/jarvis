@@ -10,13 +10,10 @@ import os
 import sys
 import threading
 import time
-from datetime import datetime
 from typing import Any, NoReturn
 
-import anthropic
-
-from jarvis.agent import Agent
 from jarvis.agenda import CalendarSource, build_calendar
+from jarvis.assistant import build_assistant
 from jarvis.chat import COMMANDS, ChatService
 from jarvis.config import (
     TELEGRAM_LOG_FILE,
@@ -28,11 +25,9 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.logs import FILE_ONLY, setup_logger
-from jarvis.long_term_memory import MemoryStore
-from jarvis.memory import ConversationStore
 from jarvis.prompts import build_chat_system_prompt
 from jarvis.reminder_delivery import ReminderDelivery
-from jarvis.reminders import ReminderStore
+from jarvis.speech import describe_speech
 from jarvis.telegram.bot import (
     MAX_BACKOFF_SECONDS,
     TelegramChannel,
@@ -45,10 +40,8 @@ from jarvis.telegram.client import (
     TelegramConnectionError,
     TelegramError,
 )
-from jarvis.tools import Confirmer, build_registry
-from jarvis.speech import build_speaker, describe_speech
-from jarvis.tasks import TaskStore
-from jarvis.voice import build_transcriber, describe_voice
+from jarvis.voice import describe_voice
+from jarvis.wake_word import describe_wake_word
 
 LINK_TIMEOUT_SECONDS = 5 * 60
 BACKGROUND_HINT = (
@@ -69,51 +62,43 @@ def run_telegram(scheduled: bool = False) -> None:
     # En segundo plano la red puede tardar en estar lista tras encender o despertar el PC.
     bot_name = _prepare_bot_or_exit(client, wait_for_network=scheduled)
 
-    def now() -> datetime:
-        return datetime.now(settings.timezone)
-
-    store = ConversationStore(settings.summary.db_path, now=now)
-    reminders = ReminderStore(settings.summary.db_path, now=now)
-    tasks = TaskStore(settings.summary.db_path, now=now)
-    memories = MemoryStore(settings.summary.db_path, now=now)
-    anthropic_client = anthropic.Anthropic(api_key=settings.api_key)
+    assistant = build_assistant(settings, calendar)
+    now, memories = assistant.now, assistant.memories
     channel = TelegramChannel(client)
-    delivery = ReminderDelivery(reminders, channel, telegram.owner_id, settings.timezone, now)
-
-    def agent_factory(history: list, system_prompt: str, confirm: Confirmer) -> Agent:
-        return Agent(
-            client=anthropic_client,
-            registry=build_registry(
-                calendar, confirm=confirm, reminders=reminders, now=now, tasks=tasks, memories=memories
-            ),
-            model=settings.model,
-            system_prompt=system_prompt,
-            history=history,
-        )
+    delivery = ReminderDelivery(assistant.reminders, channel, telegram.owner_id, settings.timezone, now)
 
     chat = ChatService(
         channel=channel,
-        store=store,
-        agent_factory=agent_factory,
+        store=assistant.conversations,
+        agent_factory=assistant.agent_factory,
         # Se llama solo al empezar una conversación: la memoria entra al día en cada conversación nueva.
         system_prompt=lambda: build_chat_system_prompt(now().date(), memories.all()),
         now=now,
         button_handler=delivery.handle_button,
-        transcriber=build_transcriber(settings.voice),
-        speaker=build_speaker(settings.speech),
+        transcriber=assistant.transcriber,
+        speaker=assistant.speaker,
         memories=memories,
-        purges=[tasks.purge_old],
+        purges=[assistant.tasks.purge_old],
     )
-    poller = TelegramPoller(client, telegram.owner_id, deliver=chat.submit, mark_processed=store.mark_processed)
+    poller = TelegramPoller(
+        client, telegram.owner_id, deliver=chat.submit, mark_processed=assistant.conversations.mark_processed
+    )
     chat.start()
     threading.Thread(target=delivery.run_forever, name="jarvis-recordatorios", daemon=True).start()
 
     voice_status, speech_status = describe_voice(settings.voice), describe_speech(settings.speech)
+    wake_status = describe_wake_word(settings)
     print(f"JARVIS conectado a Telegram como @{bot_name} (calendario: {calendar.name}).")
     print(f"Notas de voz: {voice_status}. Respuestas con voz: {speech_status}.")
+    print(f"Hey JARVIS en el PC: {wake_status}.")
     print("Escríbele a tu bot desde Telegram. Ctrl+C para detener.\n")
     logger.info("Bot de Telegram iniciado%s.", " en segundo plano" if scheduled else "")
     logger.info("Notas de voz: %s. Respuestas con voz: %s.", voice_status, speech_status, extra=FILE_ONLY)
+    logger.info("Hey JARVIS en el PC: %s.", wake_status, extra=FILE_ONLY)
+    if settings.wake_word.enabled:
+        from jarvis.pc_voice import start_pc_voice  # usa numpy, del grupo opcional de voz
+
+        start_pc_voice(assistant, console=False)
     try:
         poller.run_forever(wait_on_conflict=scheduled)
     except KeyboardInterrupt:

@@ -24,6 +24,8 @@ DEFAULT_WHISPER_MODEL = "small"
 # Respuestas con voz: "local" (Piper en el equipo) o "no" (desactivadas).
 SPEECH_ENGINES = ("local", "no")
 DEFAULT_PIPER_VOICE = "es_MX-ald-medium"
+# Palabra de activación en el PC ("Hey JARVIS"): apagada por defecto (micrófono siempre abierto).
+DEFAULT_WAKE_THRESHOLD = 0.5
 
 
 class ConfigError(Exception):
@@ -88,6 +90,15 @@ class SpeechSettings:
 
 
 @dataclass(frozen=True)
+class WakeWordSettings:
+    """"Hey JARVIS" en el PC. `threshold` (0 a 1): más alto, menos activaciones por error."""
+
+    enabled: bool
+    threshold: float
+    models_dir: Path  # carpeta donde `preparar-voz` descarga los modelos de activación
+
+
+@dataclass(frozen=True)
 class Settings:
     api_key: str
     model: str
@@ -97,6 +108,7 @@ class Settings:
     summary: SummarySettings
     voice: VoiceSettings
     speech: SpeechSettings
+    wake_word: WakeWordSettings
 
 
 def read_env() -> Mapping[str, str]:
@@ -122,6 +134,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         summary=load_summary_settings(env),
         voice=load_voice_settings(env),
         speech=load_speech_settings(env),
+        wake_word=load_wake_word_settings(env),
     )
 
 
@@ -195,6 +208,25 @@ def load_speech_settings(env: Mapping[str, str]) -> SpeechSettings:
             f"por ejemplo {DEFAULT_PIPER_VOICE}."
         )
     return SpeechSettings(engine=engine, voice=voice, voices_dir=DEFAULT_CONFIG_DIR / "voz" / "piper")
+
+
+def load_wake_word_settings(env: Mapping[str, str]) -> WakeWordSettings:
+    value = (_get(env, "JARVIS_PALABRA_ACTIVACION") or "no").lower()
+    if value not in ("si", "sí", "no"):
+        raise ConfigError(f"JARVIS_PALABRA_ACTIVACION='{value}' no es válido. Opciones: si, no.")
+    raw_threshold = _get(env, "JARVIS_ACTIVACION_UMBRAL")
+    try:
+        threshold = float(raw_threshold.replace(",", ".")) if raw_threshold else DEFAULT_WAKE_THRESHOLD
+    except ValueError:
+        threshold = -1.0
+    if not 0 < threshold < 1:
+        raise ConfigError(
+            f"JARVIS_ACTIVACION_UMBRAL='{raw_threshold}' no es válido: usa un número entre 0 y 1, "
+            "por ejemplo 0.5."
+        )
+    return WakeWordSettings(
+        enabled=value != "no", threshold=threshold, models_dir=DEFAULT_CONFIG_DIR / "voz" / "activacion"
+    )
 
 
 def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:

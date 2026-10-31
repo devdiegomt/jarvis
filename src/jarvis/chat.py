@@ -105,6 +105,7 @@ class IncomingMessage:
     sender: str  # identificador del chat del usuario en el canal
     text: str | None  # None si no es texto (nota de voz, imagen…)
     voice: VoiceNote | None = None
+    transcribed: bool = False  # el texto ya viene de la voz (por ejemplo, del micrófono del PC)
 
 
 @dataclass(frozen=True)
@@ -245,7 +246,7 @@ class ChatService:
         conversation = self._store.load_active(self._channel.name, message.sender, self._system_prompt)
         # La fecha va en cada mensaje: el system prompt no cambia dentro de una conversación.
         # La marca de nota de voz avisa al modelo de que el texto puede traer errores de transcripción.
-        mark = f"{VOICE_MARK} " if message.voice is not None else ""
+        mark = f"{VOICE_MARK} " if message.voice is not None or message.transcribed else ""
         reply = self._ask_agent(conversation, message.sender, f"[{self._now():%Y-%m-%d %H:%M}] {mark}{text}")
         if self._should_speak(message.sender, by_voice=message.voice is not None):
             self._send_voice_safely(message.sender, reply)
