@@ -375,11 +375,12 @@ def start_pc_voice(
     speaker: PcmSpeaker = assistant.speaker  # type: ignore[assignment]  # Piper sabe dar audio PCM
     channel = PcVoiceChannel(speaker, audio, on_say=_print_reply if console else None)
     now, memories, web = assistant.now, assistant.memories, assistant.settings.web
+    has_mail = assistant.mail is not None
     chat = ChatService(
         channel=channel,
         store=assistant.conversations,
         agent_factory=assistant.agent_factory,
-        system_prompt=lambda: build_pc_voice_system_prompt(now().date(), memories.all(), web),
+        system_prompt=lambda: build_pc_voice_system_prompt(now().date(), memories.all(), web, has_mail),
         now=now,
         memories=memories,
         show_sources=False,  # los enlaces no se leen en voz alta

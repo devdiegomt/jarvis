@@ -9,10 +9,12 @@ from datetime import datetime
 
 from jarvis.agenda import CalendarSource, supports_writing
 from jarvis.config import WebSettings
+from jarvis.gmail_reader import GmailReader
+from jarvis.mail_watch import WatchList
 from jarvis.long_term_memory import MemoryStore
 from jarvis.reminders import ReminderStore
 from jarvis.tasks import TaskStore
-from jarvis.tools import calendario, internet, memoria, mensajes, pendientes, recordatorios, reuniones
+from jarvis.tools import calendario, correo, internet, memoria, mensajes, pendientes, recordatorios, reuniones
 from jarvis.tools.registry import Confirmer, Tool, ToolRegistry, ToolResult, deny_all
 
 
@@ -48,10 +50,18 @@ def build_registry(
     tasks: TaskStore | None = None,
     memories: MemoryStore | None = None,
     web: WebSettings | None = None,
+    watched: WatchList | None = None,
+    mail: GmailReader | None = None,
 ) -> ToolRegistry:
-    """Crea un registro con todas las tools integradas (y las de internet, si se pasa `web`)."""
+    """Crea un registro con todas las tools integradas (y las de internet, si se pasa `web`).
+
+    Las de correo se incluyen si se pasa la lista de vigilados (`watched`) y el lector de Gmail (`mail`).
+    """
     registry = ToolRegistry(confirm=confirm)
-    for tool in build_tools(calendar, reminders, now, tasks, memories):
+    tools = build_tools(calendar, reminders, now, tasks, memories)
+    if watched is not None and mail is not None:
+        tools += correo.build_watch_tools(watched) + correo.build_read_tools(mail)
+    for tool in tools:
         registry.register(tool)
     for definition in internet.build_server_tools(web) if web is not None else []:
         registry.register_server_tool(definition)

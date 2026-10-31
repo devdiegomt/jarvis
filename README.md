@@ -8,7 +8,8 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.13**: te avisa antes de cada reunión y te da un vistazo a mañana por la noche; lee tu Google
+**v0.14**: te avisa de los correos de tus clientes, antes de cada reunión y te da un vistazo a
+mañana por la noche; lee tu Google
 Calendar y agenda, mueve o cancela tus eventos (siempre con tu
 confirmación), chateas con JARVIS por Telegram (también en
 segundo plano) escribiéndole o con notas de voz, y te responde también con voz; en el PC lo llamas
@@ -55,8 +56,9 @@ calendario real, sigue los pasos de la siguiente sección.
 
 JARVIS pide permiso para **ver y editar los eventos** del calendario (`calendar.events`): no
 puede compartir ni borrar calendarios, y antes de agendar, mover o cancelar algo siempre te pide
-confirmación. Si el resumen diario va por Gmail, pide además permiso para **enviar** correos
-(`gmail.send`), sin acceso a leerlos ni borrarlos. La autorización se guarda en tu equipo,
+confirmación. Para avisarte de tus clientes pide permiso para **leer** tus correos
+(`gmail.readonly`), sin poder enviar, borrar ni modificar nada (`JARVIS_CORREO=no` lo omite). Si el
+resumen diario va por Gmail, pide además permiso para **enviar** correos (`gmail.send`). La autorización se guarda en tu equipo,
 fuera del repositorio.
 
 ### 1. Crear las credenciales en Google Cloud (una sola vez)
@@ -64,7 +66,8 @@ fuera del repositorio.
 1. Entra a [Google Cloud Console](https://console.cloud.google.com/) y crea un proyecto nuevo
    (por ejemplo, `jarvis`).
 2. Ve a **APIs y servicios → Biblioteca**, busca **Google Calendar API** y pulsa **Habilitar**.
-   Si vas a recibir el resumen diario por Gmail, haz lo mismo con **Gmail API**.
+   Haz lo mismo con **Gmail API** (para los avisos de correos de clientes y, si lo eliges, el
+   resumen diario por Gmail).
 3. Ve a **Google Auth Platform** (o **Pantalla de consentimiento de OAuth**) y pulsa **Comenzar**:
    - Nombre de la app: `JARVIS`; correo de asistencia: el tuyo.
    - Público: **Externo**.
@@ -95,8 +98,8 @@ Se abrirá el navegador (si no, copia la URL que aparece en la terminal):
 1. Elige tu cuenta de Google.
 2. Verás el aviso *"Google no verificó esta app"*: es normal para una app personal.
    Pulsa **Continuar**.
-3. Acepta los permisos que se piden (ver tus calendarios y, si el resumen va por Gmail,
-   enviar correos). Deja todas las casillas marcadas.
+3. Acepta los permisos que se piden (ver y editar tus eventos, leer tus correos para avisarte de
+   tus clientes y, si el resumen va por Gmail, enviar correos). Deja todas las casillas marcadas.
 
 El token se guarda en `~/.config/jarvis/token.json`.
 
@@ -241,6 +244,34 @@ JARVIS te escribe por su cuenta, por Telegram:
 Se configuran en `.env`: `JARVIS_AVISO_REUNION=15` (minutos antes; `0` lo apaga) y
 `JARVIS_VISTAZO_MANANA=21:00` (o `no`). Los envía JARVIS en segundo plano, así que el PC debe estar
 encendido. `uv run python -m jarvis estado` muestra cuáles están activos.
+
+## Correos de clientes
+
+Dile a JARVIS de quién quieres enterarte: *"Avísame de los correos de laura@acme.com"* o *"Avísame
+de todo lo que llegue de acme.com"* (un dominio entero). Cuando llegue un correo de ellos, te
+escribe por Telegram con el remitente, el asunto y el comienzo del mensaje:
+
+```
+📧 Correo de Laura Gómez (laura@acme.com)
+«Cambios a la propuesta»
+Hola Diego, te adjunto la versión con los ajustes que hablamos…
+```
+
+- **`/clientes`** muestra la lista; *"Ya no me avises de acme.com"* quita a alguien.
+- También puedes preguntarle por tus correos: *"¿Qué me escribió Laura esta semana?"*, *"Léeme el
+  último correo de acme.com"*. Busca y lee solo cuando se lo pides.
+- Revisa cada 2 minutos. Al agregar a alguien, te avisa de lo que llegue **desde ese momento** (no
+  de correos viejos), y cada correo una sola vez.
+- **Solo lectura:** JARVIS no puede enviar, borrar, archivar ni marcar como leído nada. Lo que dice
+  un correo lo toma como información: si un correo le pide hacer algo, te lo cuenta en vez de hacerlo.
+- Los correos no se guardan en tu equipo (solo la lista y qué correos ya te avisó), y los registros
+  no anotan remitentes ni asuntos.
+- **Si ya tenías JARVIS autorizado antes de la v0.14**, habilita la **Gmail API** en tu proyecto de
+  Google Cloud (si no lo estaba) y ejecuta una vez `uv run python -m jarvis google-login` para
+  aceptar el permiso de leer correos. Mientras tanto, `estado` muestra *"falta el permiso"*.
+
+Se configuran en `.env`: `JARVIS_CORREO=no` los apaga y `JARVIS_CORREO_MINUTOS=5` cambia cada cuánto
+revisa (de 1 a 60 minutos).
 
 ## Agendar en el calendario
 
@@ -532,6 +563,8 @@ texto de tus mensajes.
 | `JARVIS_MODEL` | Modelo de Claude | `claude-sonnet-5-5` |
 | `JARVIS_AVISO_REUNION` | Minutos antes de cada reunión para avisarte (`0` = sin aviso) | `10` |
 | `JARVIS_VISTAZO_MANANA` | Hora del vistazo a mañana, de domingo a jueves (`no` = sin vistazo) | `20:00` |
+| `JARVIS_CORREO` | Avisos de correos de clientes y lectura de Gmail: `si` o `no` | `si` |
+| `JARVIS_CORREO_MINUTOS` | Cada cuántos minutos revisa los correos (1 a 60) | `2` |
 | `JARVIS_BUSQUEDA` | Búsqueda en internet y lectura de enlaces: `si` o `no` | `si` |
 | `JARVIS_CIUDAD` / `JARVIS_PAIS` | Tu ciudad y país (código de dos letras), para búsquedas locales | |
 | `JARVIS_ESFUERZO` | Cuánto razona Claude en el chat y la voz: `low` (rápido), `medium`, `high`, `xhigh`, `max` | `low` |

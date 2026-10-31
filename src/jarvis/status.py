@@ -97,6 +97,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     lines.append(f"Hey JARVIS en el PC: {describe_wake_word(settings)}")
     lines.append(f"Búsqueda en internet: {_describe_web(settings)}")
     lines.append(f"Avisos: {describe_proactive(settings.proactive)}")
+    lines.append(f"Correo: {_describe_mail(settings)}")
 
     # Solo cantidades y fechas: el texto de recordatorios, pendientes y recuerdos no se muestra.
     # `estado` solo lee: si la base de datos aún no existe, no la crea.
@@ -126,6 +127,25 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     else:
         lines.append("Memoria: vacía")
     return lines
+
+
+def _describe_mail(settings: Settings) -> str:
+    if not settings.mail.enabled:
+        return "desactivado (JARVIS_CORREO=no)"
+    from jarvis.google_auth import GMAIL_READ_SCOPE, token_scopes
+
+    if GMAIL_READ_SCOPE not in token_scopes(settings.google.token_file):
+        return "⚠ falta el permiso para leer tu correo: ejecuta `google-login`"
+    count = 0
+    if settings.summary.db_path.exists():  # `estado` solo lee: no crea la base de datos
+        from jarvis.mail_watch import WatchList
+
+        count = len(WatchList(settings.summary.db_path).all())
+    if count:
+        who = f"{count} {'contacto vigilado' if count == 1 else 'contactos vigilados'}"
+    else:
+        who = "sin contactos vigilados"
+    return f"activo ({who}, revisa cada {settings.mail.check_minutes} min)"
 
 
 def _describe_web(settings: Settings) -> str:

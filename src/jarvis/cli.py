@@ -31,6 +31,7 @@ from jarvis.config import (
     VoiceSettings,
     WakeWordSettings,
     load_google_settings,
+    load_mail_settings,
     load_settings,
     load_speech_settings,
     load_summary_settings,
@@ -39,7 +40,9 @@ from jarvis.config import (
     read_env,
 )
 from jarvis.confirmation import CONFIRMATION_QUESTION, parse_yes_no
+from jarvis.assistant import build_mail_reader
 from jarvis.long_term_memory import MemoryStore
+from jarvis.mail_watch import WatchList
 from jarvis.prompts import build_system_prompt
 from jarvis.reminders import ReminderStore
 from jarvis.tasks import TaskStore
@@ -77,6 +80,7 @@ def build_agent() -> tuple[Agent, CalendarSource]:
         TaskStore(db_path, now=now),
         MemoryStore(db_path, now=now),
     )
+    mail = build_mail_reader(settings)
     agent = Agent(
         client=client,
         registry=build_registry(
@@ -87,9 +91,11 @@ def build_agent() -> tuple[Agent, CalendarSource]:
             tasks=tasks,
             memories=memories,
             web=settings.web,
+            watched=WatchList(db_path),
+            mail=mail,
         ),
         model=settings.model,
-        system_prompt=build_system_prompt(now().date(), memories.all(), settings.web),
+        system_prompt=build_system_prompt(now().date(), memories.all(), settings.web, mail=mail is not None),
         effort=settings.effort,
     )
     return agent, calendar
@@ -136,6 +142,7 @@ def run_chat() -> None:
 def run_google_login() -> None:
     from jarvis.google_auth import (
         CALENDAR_EVENTS_SCOPE,
+        GMAIL_READ_SCOPE,
         GMAIL_SEND_SCOPE,
         GoogleAuthError,
         describe_scopes,
@@ -145,13 +152,15 @@ def run_google_login() -> None:
     env = read_env()
     google = load_google_settings(env)
     try:
-        summary = load_summary_settings(env)
+        summary, mail = load_summary_settings(env), load_mail_settings(env)
     except ConfigError as exc:
         print(f"Error de configuración: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # Permiso mínimo: Gmail solo si el resumen diario se envía por Gmail.
-    scopes = [CALENDAR_EVENTS_SCOPE] + ([GMAIL_SEND_SCOPE] if summary.uses_gmail else [])
+    # Permiso mínimo: leer correos solo con los avisos de clientes; enviar, solo con el resumen por Gmail.
+    scopes = [CALENDAR_EVENTS_SCOPE]
+    scopes += [GMAIL_READ_SCOPE] if mail.enabled else []
+    scopes += [GMAIL_SEND_SCOPE] if summary.uses_gmail else []
     print(f"Vas a autorizar a JARVIS a {describe_scopes(scopes)}.")
     try:
         login(google.credentials_file, google.token_file, scopes)
