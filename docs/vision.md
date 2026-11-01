@@ -33,6 +33,7 @@ Reglas que acompañan al principio:
 | Clientes | Avisos de correos de clientes; buscar y leer correos | Hecho (v0.14) |
 | Información | Clima (hecho), noticias por RSS y precios que el usuario sigue, con avisos | Parcial |
 | Dinero | Gastos e ingresos por chat, TRM, cobros a clientes con avisos, CSV | Hecho (v0.17) |
+| Presupuesto | Unificar con la app de presupuesto del usuario (Supabase) | Propuesta ([ver](integracion-presupuesto.md)) |
 | Movilidad | Pico y placa, tiempo de viaje a la próxima reunión ("sal ya") | Futuro |
 | Trabajo | Notificaciones de GitHub, estado de proyectos por cliente | Futuro |
 | Hogar y salud | Hábitos, citas médicas, domótica | Futuro |
