@@ -128,6 +128,17 @@ class ProactiveSettings:
 
 
 @dataclass(frozen=True)
+class ApiSettings:
+    """API para el iPhone (app web, Siri y widget). Solo escucha en el propio PC (127.0.0.1); el
+    acceso remoto es únicamente por `tailscale serve`, con clave."""
+
+    enabled: bool = False
+    port: int = 8765
+    key_file: Path = Path("api_key.sha256")  # huella (hash) de la clave; la clave nunca se guarda
+    tailscale_user: str = ""  # si se define, solo se aceptan pedidos de esa cuenta de Tailscale
+
+
+@dataclass(frozen=True)
 class MailSettings:
     """Avisos de correos de clientes (Gmail, solo lectura). `check_minutes`: cada cuánto se revisa."""
 
@@ -150,6 +161,7 @@ class Settings:
     web: WebSettings
     proactive: ProactiveSettings = ProactiveSettings()
     mail: MailSettings = MailSettings()
+    api: ApiSettings = ApiSettings()
 
 
 def read_env() -> Mapping[str, str]:
@@ -180,6 +192,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         web=load_web_settings(env),
         proactive=load_proactive_settings(env),
         mail=load_mail_settings(env),
+        api=load_api_settings(env),
     )
 
 
@@ -340,6 +353,26 @@ def load_mail_settings(env: Mapping[str, str]) -> MailSettings:
     if not 1 <= minutes <= 60:
         raise ConfigError(f"JARVIS_CORREO_MINUTOS='{raw_minutes}' no es válido: usa un número de 1 a 60.")
     return MailSettings(enabled=value != "no", check_minutes=minutes)
+
+
+def load_api_settings(env: Mapping[str, str]) -> ApiSettings:
+    value = (_get(env, "JARVIS_API") or "no").lower()
+    if value not in ("si", "sí", "no"):
+        raise ConfigError(f"JARVIS_API='{value}' no es válido. Opciones: si, no.")
+    raw_port = _get(env, "JARVIS_API_PUERTO")
+    try:
+        port = int(raw_port) if raw_port else ApiSettings.port
+    except ValueError:
+        port = 0
+    if not 1024 <= port <= 65535:
+        raise ConfigError(f"JARVIS_API_PUERTO='{raw_port}' no es válido: usa un número de 1024 a 65535.")
+    user = (_get(env, "JARVIS_API_USUARIO") or "").strip().lower()
+    return ApiSettings(
+        enabled=value != "no",
+        port=port,
+        key_file=DEFAULT_CONFIG_DIR / "api_key.sha256",
+        tailscale_user=user,
+    )
 
 
 def load_telegram_settings(env: Mapping[str, str], require_owner: bool = True) -> TelegramSettings:

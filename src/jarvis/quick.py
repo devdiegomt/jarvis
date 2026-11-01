@@ -6,8 +6,9 @@ sigue estando el chat con Claude.
 
 from collections.abc import Callable
 from datetime import date, datetime, tzinfo
+from typing import Any
 
-from jarvis.agenda import CalendarError, CalendarSource, meeting_to_line
+from jarvis.agenda import CalendarError, CalendarSource, Meeting, meeting_to_line
 from jarvis.dates import format_spanish_date
 from jarvis.reminders import ReminderStore
 from jarvis.summary import task_to_line
@@ -129,4 +130,76 @@ def build_quick_commands(
         "/recordatorios": lambda: reminders_text(reminders, now(), timezone),
         "/clima": lambda: weather_command_text(weather, today()),
         "/gasto": lambda: spending_text(usage, now(), timezone),
+    }
+
+
+def today_data(
+    *,
+    calendar: CalendarSource,
+    tasks: TaskStore,
+    reminders: ReminderStore,
+    weather: WeatherService | None,
+    now: datetime,
+    timezone: tzinfo,
+) -> dict[str, Any]:
+    """Lo mismo que `/hoy`, en datos, para la app y el widget del iPhone (sin IA)."""
+    local_now = now.astimezone(timezone)
+    today = local_now.date()
+    forecast = weather.day(today) if weather is not None else None
+    data: dict[str, Any] = {
+        "fecha": today.isoformat(),
+        "dia": format_spanish_date(today),
+        "clima": None,
+        "reuniones": [],
+        "proxima": None,
+        "recordatorios": [],
+        "pendientes": [],
+        "error_calendario": None,
+    }
+    if forecast is not None:
+        data["clima"] = {
+            "linea": day_line(forecast),
+            "emoji": forecast.emoji,
+            "descripcion": forecast.description,
+            "min_c": round(forecast.temp_min),
+            "max_c": round(forecast.temp_max),
+            "prob_lluvia_pct": forecast.rain_chance,
+        }
+    try:
+        meetings = calendar.list_meetings(today, today)
+    except CalendarError as exc:
+        data["error_calendario"] = str(exc)
+        meetings = []
+    for meeting in meetings:
+        item = _meeting_to_data(meeting)
+        data["reuniones"].append(item)
+        ends = meeting.end if isinstance(meeting.end, datetime) else None
+        if data["proxima"] is None and not meeting.all_day and ends is not None and ends > local_now:
+            data["proxima"] = item
+    data["recordatorios"] = [
+        {"hora": f"{r.due_at.astimezone(timezone):%H:%M}", "texto": r.text}
+        for r in reminders.pending()
+        if r.due_at.astimezone(timezone).date() == today
+    ]
+    data["pendientes"] = [
+        {
+            "texto": t.text,
+            "fecha": t.due_date.isoformat() if t.due_date else None,
+            "atrasado": bool(t.due_date and t.due_date < today),
+        }
+        for t in tasks.due_by(today)
+    ]
+    data["pendientes_abiertos"] = len(tasks.open())
+    return data
+
+
+def _meeting_to_data(meeting: Meeting) -> dict[str, Any]:
+    timed = isinstance(meeting.start, datetime) and isinstance(meeting.end, datetime)
+    return {
+        "titulo": meeting.title,
+        "inicio": f"{meeting.start:%H:%M}" if timed else None,
+        "fin": f"{meeting.end:%H:%M}" if timed else None,
+        "todo_el_dia": meeting.all_day,
+        "lugar": meeting.location,
+        "enlace": meeting.link,
     }

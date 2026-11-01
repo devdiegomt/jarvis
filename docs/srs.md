@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.6 (cubre hasta la v0.15)
+- **Versión del documento:** 2.7 (cubre hasta la v0.16)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -246,6 +246,16 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - **RF-73.** `/hoy`, `/pendientes`, `/recordatorios`, `/clima` y `/gasto` se responden en código, sin
   consultar a Claude, y aparecen en el menú de Telegram y en `/ayuda`.
 
+### v0.16: JARVIS en el iPhone
+
+- **RF-74.** Con `JARVIS_API=si`, JARVIS ofrece una API HTTP en el propio PC: `/api/hoy` (datos del día),
+  `/api/pendientes`, `/api/recordatorios`, `/api/clima` y `/api/gasto` sin IA, y `/api/chat` con la
+  misma lógica que Telegram, incluidas las confirmaciones (`/api/boton`, o "sí"/"no" escrito).
+- **RF-75.** Una app web instalable (PWA) con las pestañas Hoy y Chat se sirve desde la misma API.
+- **RF-76.** `jarvis api-clave` crea la clave de acceso (la anterior deja de servir); `estado` muestra si
+  la app está activa y cómo publicarla.
+- **RF-77.** El repositorio incluye un widget para Scriptable y el README explica el Atajo de Siri.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -256,8 +266,14 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   calendarios); `gmail.readonly` (leer, sin enviar, borrar ni modificar) solo para los avisos de
   correo; `gmail.send` solo si el resumen va por Gmail.
 - **RNF-03.** Los tokens OAuth se guardan con permisos de archivo solo para el usuario.
-- **RNF-04.** JARVIS no abre puertos en el PC: recibe los mensajes de Telegram consultando su API
-  (long polling). El token del bot nunca aparece en logs ni en mensajes de error.
+- **RNF-04.** JARVIS no queda expuesto en la red: recibe los mensajes de Telegram consultando su API
+  (long polling) y la API del iPhone (apagada por defecto) solo escucha en `127.0.0.1`; el acceso
+  remoto es únicamente por `tailscale serve` (nunca `funnel`). El token del bot nunca aparece en logs
+  ni en mensajes de error.
+- **RNF-04b.** La API exige una clave de 32 bytes aleatorios, de la que solo se guarda la huella
+  (SHA-256) y que se compara en tiempo constante; tras 5 fallos en 10 minutos se pausa 1 minuto. No
+  envía cabeceras CORS, sirve la app con una política de contenido estricta y limita el tamaño de
+  los pedidos. Sus registros guardan método, ruta, código y tiempo, nunca el contenido.
 - **RNF-05.** Las acciones programadas no son tools: el modelo no puede dispararlas ni cambiar su destino.
 - **RNF-05b.** Las conexiones HTTPS siempre verifican el certificado, usando el almacén de
   certificados del sistema operativo (v0.5.1); nunca se desactiva la verificación.
@@ -345,6 +361,7 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 - Invitar a otras personas a los eventos, eventos de día completo o recurrentes creados por JARVIS.
 - Imágenes o archivos en el chat; otras voces en la nube (por ejemplo, ElevenLabs).
 - WhatsApp como canal (retirado en la v0.5; ver ADR 004 y ADR 005).
+- Notificaciones push en la app del iPhone y app nativa de iOS (requiere Mac).
 - Varios usuarios, servidor en la nube, Alexa y llamadas telefónicas (ver roadmap).
 
 ## 6. Trazabilidad
@@ -367,4 +384,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-61 a RF-64 | `proactive.py`, `agenda/google.py`, `config.py`, `telegram/app.py`, `status.py` | `test_proactive.py` |
 | RF-65 a RF-69 | `mail_watch.py`, `gmail_reader.py`, `tools/correo.py`, `proactive.py`, `chat.py`, `prompts.py`, `google_auth.py`, `status.py` | `test_mail.py` |
 | RF-70 a RF-73 | `usage.py`, `agent.py`, `weather.py`, `tools/clima.py`, `quick.py`, `chat.py`, `summary.py`, `proactive.py`, `status.py` | `test_usage.py`, `test_weather.py` |
+| RF-74 a RF-77 | `api/`, `chat.py`, `quick.py`, `config.py`, `status.py`, `telegram/app.py`, `clients/scriptable/` | `test_api.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

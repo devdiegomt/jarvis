@@ -377,6 +377,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("escuchar", help="Prueba «Hey JARVIS» en el PC (micrófono y parlantes).")
     try_voice = commands.add_parser("probar-voz", help="Dice un texto por los parlantes con la voz configurada.")
     try_voice.add_argument("texto", nargs="?", default="Hola, soy JARVIS. ¿En qué te ayudo hoy?")
+    commands.add_parser("api-clave", help="Crea la clave de la app del iPhone (la anterior deja de servir).")
     commands.add_parser("estado", help="Muestra la configuración, las tareas programadas y los registros.")
     return parser
 
@@ -414,6 +415,10 @@ def main(argv: list[str] | None = None) -> None:
         run_listen()
     elif args.command == "probar-voz":
         run_try_voice(args.texto)
+    elif args.command == "api-clave":
+        from jarvis.api.app import run_api_key
+
+        run_api_key()
     elif args.command == "estado":
         from jarvis.status import run_status
 
