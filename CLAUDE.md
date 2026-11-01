@@ -78,8 +78,11 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   clientes con avisos el día que vencen y cada 7 días (`JARVIS_AVISO_COBROS`), TRM de datos.gov.co
   (`get_trm`, `/trm`), `/dinero`, `/cobros` y `jarvis exportar-dinero` (CSV). Sumas y conversiones en
   código, montos en centavos. Ver `docs/adr/022-modulo-de-dinero.md`.
-- **Siguiente:** a decidir con el usuario (presupuestos por categoría, movilidad; push en la PWA tras
-  probar el iPhone).
+- **Siguiente (propuesta):** v0.18, conectar JARVIS con la app de presupuesto del usuario
+  (`devdiegomt/presupuesto`, React + Dexie + Supabase): presupuesto como fuente de verdad de las finanzas,
+  JARVIS como cliente de Supabase con la sesión del usuario. Análisis, arquitectura y decisiones pendientes
+  en `docs/integracion-presupuesto.md`; confirmarlas con el usuario antes de implementar. Después: movilidad;
+  push en la PWA tras probar el iPhone.
 - Después: módulo de movilidad; app nativa de iOS cuando haya Mac; alojamiento (servidor,
   nube) según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
@@ -177,6 +180,7 @@ jarvis/
 ├── .github/workflows/  # CI: pytest en cada PR y push a main
 ├── docs/
 │   ├── vision.md       # visión: qué hace la IA y qué el código, módulos y orden
+│   ├── integracion-presupuesto.md # propuesta para unificar con la app de presupuesto
 │   ├── srs.md          # requisitos (RF / RNF por versión)
 │   └── adr/            # decisiones de arquitectura (una por archivo)
 ├── .env.example
