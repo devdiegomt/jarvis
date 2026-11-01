@@ -14,11 +14,14 @@ from jarvis.mail_watch import WatchList
 from jarvis.long_term_memory import MemoryStore
 from jarvis.reminders import ReminderStore
 from jarvis.tasks import TaskStore
+from jarvis.money import MoneyStore
+from jarvis.trm import TrmService
 from jarvis.weather import WeatherService
 from jarvis.tools import (
     calendario,
     clima,
     correo,
+    dinero,
     internet,
     memoria,
     mensajes,
@@ -64,11 +67,15 @@ def build_registry(
     watched: WatchList | None = None,
     mail: GmailReader | None = None,
     weather: WeatherService | None = None,
+    money: MoneyStore | None = None,
+    currency: str = "COP",
+    trm: TrmService | None = None,
 ) -> ToolRegistry:
     """Crea un registro con todas las tools integradas (y las de internet, si se pasa `web`).
 
     Las de correo se incluyen si se pasa la lista de vigilados (`watched`) y el lector de Gmail (`mail`);
-    la del clima, si se pasa `weather` y el reloj.
+    la del clima, si se pasa `weather` y el reloj; las de dinero, si se pasa `money` y el reloj (la TRM,
+    además, con `trm`).
     """
     registry = ToolRegistry(confirm=confirm)
     tools = build_tools(calendar, reminders, now, tasks, memories)
@@ -76,6 +83,8 @@ def build_registry(
         tools += correo.build_watch_tools(watched) + correo.build_read_tools(mail)
     if weather is not None and now is not None:
         tools.append(clima.build_tool(weather, now))
+    if money is not None and now is not None:
+        tools += dinero.build_tools(money, now, currency, trm)
     for tool in tools:
         registry.register(tool)
     for definition in internet.build_server_tools(web) if web is not None else []:

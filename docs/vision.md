@@ -32,7 +32,7 @@ Reglas que acompañan al principio:
 | Día | Agenda, avisos antes de reuniones, recordatorios, pendientes, resumen y vistazo a mañana | Hecho |
 | Clientes | Avisos de correos de clientes; buscar y leer correos | Hecho (v0.14) |
 | Información | Clima (hecho), noticias por RSS y precios que el usuario sigue, con avisos | Parcial |
-| Dinero | Gastos por chat, TRM, facturas por cobrar a clientes, vencimientos | Futuro |
+| Dinero | Gastos e ingresos por chat, TRM, cobros a clientes con avisos, CSV | Hecho (v0.17) |
 | Movilidad | Pico y placa, tiempo de viaje a la próxima reunión ("sal ya") | Futuro |
 | Trabajo | Notificaciones de GitHub, estado de proyectos por cliente | Futuro |
 | Hogar y salud | Hábitos, citas médicas, domótica | Futuro |
@@ -58,8 +58,8 @@ iPhone), con una clave propia. Ver [ADR 021](adr/021-api-por-tailscale.md).
 
 1. **v0.15:** gastar menos y medir (caché, `/gasto`, clima con Open-Meteo, comandos sin IA). Hecha.
 2. **v0.16:** acceso desde el iPhone: API propia de JARVIS, solo por Tailscale y con clave. Encima, la
-   PWA, los Atajos de Siri y el widget de Scriptable. Hecha.
-3. **Después:** los módulos de más uso, empezando por Dinero o Movilidad.
+   PWA, los Atajos de Siri y el widget de Scriptable. Hecha; se probará en el iPhone en diciembre.
+3. **v0.17:** módulo de Dinero (gastos, ingresos, cobros y TRM). Hecha. Después, Movilidad o presupuestos.
 4. **Con la Mac:** app nativa con widgets, sobre la misma API.
 5. **Más adelante:** alojamiento en un servidor (si el PC encendido deja de bastar), Alexa, llamadas
    telefónicas y multiusuario.

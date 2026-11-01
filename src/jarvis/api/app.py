@@ -57,6 +57,7 @@ def start_api(assistant: Assistant, quick_commands: dict[str, Callable[[], str]]
                 weather=assistant.weather,
                 now=assistant.now(),
                 timezone=settings.timezone,
+                money=assistant.money,
             ),
             tailscale_user=api.tailscale_user,
         )

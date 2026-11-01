@@ -55,6 +55,7 @@ def build_summary(
     source_name: str,
     tasks: Sequence[Task] = (),
     weather: str | None = None,
+    extras: Sequence[str] = (),
 ) -> DailySummary:
     """Arma el correo. La agenda se genera en código para que las horas sean siempre exactas.
 
@@ -80,6 +81,8 @@ def build_summary(
         pending = "\n\nPendientes para hoy:\n" + "\n".join(f"- {task_to_line(t, day)}" for t in tasks)
 
     weather_note = f"Clima: {weather}\n\n" if weather else ""
+    if extras:  # por ejemplo, la TRM y los cobros que vencen (armados en código)
+        weather_note += "\n".join(extras) + "\n\n"
     body = (
         f"Buenos días. Este es tu resumen del {format_spanish_date(day)}.\n\n"
         f"{weather_note}"
@@ -142,6 +145,7 @@ def send_daily_summary(
     force: bool = False,
     tasks: TaskStore | None = None,
     weather: Callable[[date], str | None] | None = None,
+    extras: Callable[[date], list[str]] | None = None,
     usage_log: UsageLog | None = None,
 ) -> DailySummary | None:
     """Genera y envía el resumen del día. Devuelve None si ya se había enviado.
@@ -155,7 +159,8 @@ def send_daily_summary(
     record = (lambda usage: usage_log.record("resumen", model, usage)) if usage_log is not None else None
     highlights = write_highlights(client, model, day, meetings, due_tasks, record) if meetings else None
     weather_line = weather(day) if weather is not None else None
-    summary = build_summary(day, meetings, highlights, calendar.name, due_tasks, weather_line)
+    extra_lines = extras(day) if extras is not None else []
+    summary = build_summary(day, meetings, highlights, calendar.name, due_tasks, weather_line, extra_lines)
     notifier.send(summary.subject, summary.body)
     if log is not None:
         log.record_sent(day, now())

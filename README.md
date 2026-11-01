@@ -8,8 +8,9 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.16**: JARVIS en el iPhone (app instalable, Siri y widget) a través de tu red privada de
-Tailscale; comandos al instante sin gastar IA (`/hoy`, `/clima`, `/gasto`…), clima gratis con
+**v0.17**: lleva tus gastos, ingresos y lo que te deben tus clientes (con avisos de cobro) y la TRM
+del día; JARVIS en el iPhone (app instalable, Siri y widget) a través de tu red privada de
+Tailscale, pendiente de probar en un iPhone real; comandos al instante sin gastar IA (`/hoy`, `/clima`, `/gasto`…), clima gratis con
 Open-Meteo y medición de cuánto cuesta cada respuesta; te avisa de los correos de tus clientes,
 antes de cada reunión y te da un vistazo a mañana por la noche; lee tu Google
 Calendar y agenda, mueve o cancela tus eventos (siempre con tu
@@ -325,6 +326,9 @@ instantáneos y no gastan créditos.
 | `/recordatorios` | Los recordatorios programados |
 | `/clima` | Ahora y los próximos 3 días |
 | `/gasto` | Cuánto has gastado en Claude hoy, en la semana y en el mes |
+| `/dinero` | Tus gastos por categoría, ingresos y balance del mes |
+| `/cobros` | Lo que te deben tus clientes, vencidos primero |
+| `/trm` | El dólar hoy (TRM oficial) |
 
 ## Cuánto cuesta
 
@@ -337,7 +341,37 @@ JARVIS usa la caché de Anthropic: la parte que se repite en cada llamada (instr
 historial) cuesta el 10 % al leerla de la caché, que dura 5 minutos. Por eso los mensajes seguidos y
 los que usan tools salen bastante más baratos.
 
+## Dinero
+
+Cuéntale a JARVIS tus gastos e ingresos como se los dirías a una persona y él lleva las cuentas:
+
+- *"Gasté 25 mil en almuerzo"*, *"Pagué 180 mil de luz"*, *"Me pagaron 1,2 millones de Acme"*.
+- *"¿Cuánto llevo gastado en comida este mes?"*, *"Borra el último gasto"*.
+- **Lo que te deben:** *"Acme me debe 3 millones de la factura 12, vence el 15"*. Te avisa por
+  Telegram el día que vence y, si sigue sin pagar, cada semana (a las 09:00). Cuando te paguen:
+  *"Acme ya me pagó"*, y registra el ingreso.
+- **El dólar:** *"¿A cómo está el dólar?"*, *"¿Cuánto son 500 dólares?"*, con la TRM oficial
+  (Superintendencia Financiera, en datos.gov.co: gratis y sin clave).
+
+Comandos al instante (sin IA): **`/dinero`** (el mes por categoría, ingresos, balance y comparación
+con el mes anterior), **`/cobros`** (lo que te deben, vencidos primero) y **`/trm`**. Los cobros que
+vencen salen también en `/hoy` y en el resumen de la mañana, junto con la TRM.
+
+Las sumas y las conversiones las hace el código, no la IA, así que cuadran al peso. Todo queda solo en
+tu equipo (sin conectar bancos) y JARVIS no guarda números de tarjeta ni de cuenta.
+
+Para llevarlo a una hoja de cálculo o a tu contador:
+
+```bash
+uv run python -m jarvis exportar-dinero --mes 2026-11
+```
+
+(o `--anio 2026`; sin opciones, el mes en curso). Crea un CSV que Excel abre con las tildes bien.
+
 ## JARVIS en el iPhone
+
+> **Pendiente de probar en un iPhone real.** Mientras tanto, déjala apagada (`JARVIS_API=no`, el valor
+> por defecto): no afecta al resto de JARVIS.
 
 JARVIS tiene una app web que se instala en el iPhone (pestañas **Hoy** y **Chat**), responde a un
 **Atajo de Siri** y alimenta un **widget**. Todo llega a tu PC por
@@ -678,6 +712,8 @@ texto de tus mensajes.
 | `JARVIS_VISTAZO_MANANA` | Hora del vistazo a mañana, de domingo a jueves (`no` = sin vistazo) | `20:00` |
 | `JARVIS_CORREO` | Avisos de correos de clientes y lectura de Gmail: `si` o `no` | `si` |
 | `JARVIS_CORREO_MINUTOS` | Cada cuántos minutos revisa los correos (1 a 60) | `2` |
+| `JARVIS_MONEDA` | Moneda de tus cuentas (código de 3 letras) | `COP` |
+| `JARVIS_AVISO_COBROS` | Hora del aviso de cobros que vencen o siguen sin pagar (`no` = sin aviso) | `09:00` |
 | `JARVIS_API` | App del iPhone, Siri y widget (por Tailscale): `si` o `no` | `no` |
 | `JARVIS_API_PUERTO` | Puerto local de la app (el de `tailscale serve`) | `8765` |
 | `JARVIS_API_USUARIO` | Si se define, solo esa cuenta de Tailscale puede entrar | |
@@ -711,7 +747,7 @@ texto de tus mensajes.
 uv run pytest
 ```
 
-Los tests no llaman a ninguna API real (Anthropic, Google, Telegram, Open-Meteo, Whisper, Piper y el
+Los tests no llaman a ninguna API real (Anthropic, Google, Telegram, Open-Meteo, datos.gov.co, Whisper, Piper y el
 Programador de tareas están simulados) y no necesitan el grupo de voz (`uv sync --no-group voz`). GitHub Actions los ejecuta en cada pull request y en cada push a `main`.
 
 ## Documentación

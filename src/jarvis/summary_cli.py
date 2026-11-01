@@ -24,6 +24,9 @@ from jarvis.storage import SummaryLog
 from jarvis.summary import DailySummary, run_with_retries, send_daily_summary
 from jarvis.assistant import build_weather
 from jarvis.tasks import TaskStore
+from jarvis.money import MoneyStore
+from jarvis.money_report import due_receivables, receivable_line
+from jarvis.trm import TrmService
 from jarvis.usage import UsageLog
 from jarvis.weather import day_line
 
@@ -64,6 +67,17 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
         forecast = weather_service.day(day) if weather_service is not None else None
         return day_line(forecast) if forecast is not None else None
 
+    money = MoneyStore(db_path, now=lambda: datetime.now(settings.timezone)) if db_path.exists() else None
+    trm = TrmService()
+
+    def money_lines(day: date) -> list[str]:
+        """TRM del día y cobros que vencen hoy o vencidos (en código, sin IA)."""
+        lines = [line] if (line := trm.line(day)) else []
+        due = due_receivables(money, day) if money is not None else []
+        if due:
+            lines.append("Cobros: " + "; ".join(receivable_line(r, day) for r in due))
+        return lines
+
     def attempt() -> DailySummary | None:
         return send_daily_summary(
             day=day,
@@ -76,6 +90,7 @@ def run_summary(dry_run: bool, force: bool, scheduled: bool) -> None:
             force=force,
             tasks=tasks,
             weather=forecast_line,
+            extras=money_lines,
             usage_log=None if dry_run else UsageLog(db_path, now=lambda: datetime.now(settings.timezone)),
         )
 

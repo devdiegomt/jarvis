@@ -9,7 +9,7 @@ import sqlite3
 import time
 from collections.abc import Callable
 from contextlib import closing
-from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, time as day_time, timedelta, tzinfo
 from pathlib import Path
 
 from jarvis.agenda import CalendarError, CalendarSource, Meeting
@@ -17,6 +17,8 @@ from jarvis.chat import ChannelError, ChatChannel
 from jarvis.config import ProactiveSettings
 from jarvis.gmail_reader import Email, GmailReader, MailError, MailNotAuthorizedError, watched_query
 from jarvis.mail_watch import WatchList
+from jarvis.money import MoneyStore
+from jarvis.money_report import receivable_alert
 from jarvis.summary import format_spanish_date
 from jarvis.tasks import TaskStore
 from jarvis.weather import WeatherService, day_line
@@ -93,9 +95,13 @@ class ProactiveNotifier:
         watched: WatchList | None = None,
         mail_interval: timedelta = timedelta(minutes=2),
         weather: WeatherService | None = None,
+        money: MoneyStore | None = None,
+        receivable_time: day_time | None = None,
     ) -> None:
         self._calendar = calendar
         self._weather = weather
+        self._money = money
+        self._receivable_time = receivable_time
         self._mail = mail
         self._watched = watched
         self._mail_interval = mail_interval
@@ -115,7 +121,13 @@ class ProactiveNotifier:
     @property
     def enabled(self) -> bool:
         mail = self._mail is not None and self._watched is not None
-        return mail or self._settings.meeting_lead_minutes > 0 or self._settings.evening_time is not None
+        receivables = self._money is not None and self._receivable_time is not None
+        return (
+            mail
+            or receivables
+            or self._settings.meeting_lead_minutes > 0
+            or self._settings.evening_time is not None
+        )
 
     def check(self) -> int:
         """Una revisión: envía los avisos que toca. Devuelve cuántos se enviaron."""
@@ -126,6 +138,8 @@ class ProactiveNotifier:
             sent += self._evening_preview()
         if self._mail is not None and self._watched is not None:
             sent += self._mail_alerts(self._mail, self._watched)
+        if self._money is not None and self._receivable_time is not None:
+            sent += self._receivable_alerts(self._money, self._receivable_time)
         self._purge_if_due()
         return sent
 
@@ -219,6 +233,24 @@ class ProactiveNotifier:
             if watched_since is None or email.received_at < max(since, watched_since):
                 continue
             if self._send_once(f"correo:{email.id}", mail_alert(email)):
+                sent += 1
+        return sent
+
+    # --- Cobros a clientes ---------------------------------------------------
+
+    def _receivable_alerts(self, money: MoneyStore, alert_time: day_time) -> int:
+        """El día que vence un cobro y, mientras siga sin pagar, cada 7 días; a la hora configurada."""
+        now = self._now().astimezone(self._tz)
+        if now.time() < alert_time:
+            return 0
+        today = now.date()
+        sent = 0
+        for receivable in money.open_receivables():
+            due = receivable.due_date
+            if due is None or due > today or (today - due).days % 7 != 0:
+                continue
+            # Sin el cliente ni el monto en la clave (el registro de avisos no guarda contenido).
+            if self._send_once(f"cobro:{receivable.id}:{today.isoformat()}", receivable_alert(receivable, today)):
                 sent += 1
         return sent
 

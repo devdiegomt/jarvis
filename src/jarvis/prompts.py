@@ -80,6 +80,15 @@ _WEATHER_NOTE = """
 
 Para el clima, la lluvia o la temperatura en la ciudad del usuario, usa get_clima (datos exactos y \
 sin costo), no web_search. Busca en internet solo el clima de otras ciudades."""
+_MONEY_NOTE = """
+
+Llevas las cuentas del usuario (gastos, ingresos y lo que le deben sus clientes):
+- Registra los gastos e ingresos que mencione con registrar_movimiento y los cobros con registrar_cobro; \
+di en una frase qué registraste ("Anoté $25.000 en comida"). Si falta el monto o no se sabe si es gasto \
+o ingreso, pregunta.
+- Para totales y resúmenes usa resumen_dinero o listar_movimientos y repite sus cifras tal cual: no \
+sumes ni conviertas por tu cuenta. Para el dólar, usa get_trm.
+- Nunca guardes números de tarjeta, de cuenta ni de documento."""
 _WEB_LOCATION = """
 - El usuario está en {place}: úsalo en las búsquedas locales (clima, lugares, horarios) si no \
 menciona otro lugar."""
@@ -91,6 +100,7 @@ def build_system_prompt(
     web: WebSettings | None = None,
     mail: bool = False,
     weather: bool = False,
+    money: bool = True,
 ) -> str:
     """Los datos de la memoria se fijan al empezar la conversación; los que se guarden durante ella
     ya los conoce el modelo por el propio historial."""
@@ -99,6 +109,7 @@ def build_system_prompt(
         + _web_section(web)
         + (_MAIL_NOTE if mail else "")
         + (_WEATHER_NOTE if weather else "")
+        + (_MONEY_NOTE if money else "")
         + _memory_section(memories)
     )
 
@@ -109,9 +120,10 @@ def build_chat_system_prompt(
     web: WebSettings | None = None,
     mail: bool = False,
     weather: bool = False,
+    money: bool = True,
 ) -> str:
     """Se fija al empezar cada conversación; la fecha actual llega en cada mensaje."""
-    return build_system_prompt(today, memories, web, mail, weather) + _CHAT_NOTE
+    return build_system_prompt(today, memories, web, mail, weather, money) + _CHAT_NOTE
 
 
 def build_pc_voice_system_prompt(
@@ -120,9 +132,10 @@ def build_pc_voice_system_prompt(
     web: WebSettings | None = None,
     mail: bool = False,
     weather: bool = False,
+    money: bool = True,
 ) -> str:
     """Para las conversaciones por voz en el PC ("Hey JARVIS")."""
-    return build_system_prompt(today, memories, web, mail, weather) + _PC_VOICE_NOTE
+    return build_system_prompt(today, memories, web, mail, weather, money) + _PC_VOICE_NOTE
 
 
 def _web_section(web: WebSettings | None) -> str:
