@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="JARVIS">
+  <title>JARVIS</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <section id="login" class="login" hidden>
+    <img src="/icon-192.png" alt="" class="login-logo">
+    <h1>JARVIS</h1>
+    <p>Escribe la clave que te dio <code>jarvis api-clave</code>. Se guarda solo en este iPhone.</p>
+    <form id="login-form">
+      <input id="key" type="password" autocomplete="current-password" placeholder="Clave" required>
+      <button type="submit">Entrar</button>
+    </form>
+    <p id="login-error" class="error" role="alert"></p>
+  </section>
+
+  <main id="app" class="app" hidden>
+    <header class="top">
+      <h1>JARVIS</h1>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="hoy" aria-selected="true">Hoy</button>
+        <button role="tab" data-tab="chat" aria-selected="false">Chat</button>
+      </nav>
+    </header>
+
+    <section id="tab-hoy" class="panel">
+      <div class="today-head">
+        <h2 id="today-date">Hoy</h2>
+        <button id="refresh" class="ghost" aria-label="Actualizar">↻</button>
+      </div>
+      <div id="today" class="cards" aria-live="polite"></div>
+      <p class="hint">Sin IA: no gasta créditos. <a href="#" id="logout">Cerrar sesión</a></p>
+    </section>
+
+    <section id="tab-chat" class="panel" hidden>
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <form id="chat-form" class="composer">
+        <textarea id="text" rows="1" placeholder="Escríbele o dicta con el micrófono del teclado" maxlength="4000"></textarea>
+        <button type="submit" aria-label="Enviar">➤</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

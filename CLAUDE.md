@@ -69,8 +69,11 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
   respuesta (`api_usage`, `/gasto`, `estado`), clima con Open-Meteo (`get_clima`, también en el resumen
   y el vistazo a mañana) y comandos sin IA (`/hoy`, `/pendientes`, `/recordatorios`, `/clima`).
   Ver `docs/adr/020-gastar-menos-y-medir.md` y la visión en `docs/vision.md`.
-- **v0.16 (siguiente):** acceso desde el iPhone: API propia de JARVIS solo por Tailscale y con clave;
-  encima, PWA, Atajos de Siri y widget de Scriptable.
+- **v0.16 (hecha):** JARVIS en el iPhone: API HTTP propia (librería estándar) que solo escucha en
+  127.0.0.1 y se publica con `tailscale serve`, con clave (`jarvis api-clave`, solo su huella en el
+  equipo); app web instalable (PWA: Hoy y Chat), Atajo de Siri y widget de Scriptable. Canal
+  `ApiChannel` sobre `ChatService`. Ver `docs/adr/021-api-por-tailscale.md`.
+- **Siguiente:** a decidir con el usuario (notificaciones push en la PWA, módulo de dinero o de movilidad).
 - Después: módulos de dinero o movilidad; app nativa de iOS cuando haya Mac; alojamiento (servidor,
   nube) según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
@@ -89,6 +92,8 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
   responder y escuchar "Hey JARVIS" en el PC
 - Azure AI Speech (API REST vía `urllib` + `truststore`), opcional, para una voz más natural
 - Open-Meteo (API REST gratuita, sin clave, vía `urllib` + `truststore`) para el clima
+- API para el iPhone con `http.server` (librería estándar), publicada con Tailscale (`tailscale serve`);
+  app web (PWA) en HTML, CSS y JS propios, sin frameworks ni CDNs
 - SQLite para persistencia local (más adelante Postgres)
 - `python-dotenv` para configuración, `pytest` para tests
 - Gestión de dependencias con `uv` y `pyproject.toml`
@@ -147,7 +152,15 @@ jarvis/
 │   │   ├── correo.py       # contactos vigilados, buscar_correos y leer_correo (solo lectura)
 │   │   ├── clima.py        # get_clima (Open-Meteo, solo lectura)
 │   │   └── ...         # reuniones.py, mensajes.py
+│   ├── api/            # API para el iPhone (apagada por defecto)
+│   │   ├── server.py   # servidor HTTP: rutas, clave, cabeceras de seguridad, archivos de la app
+│   │   ├── channel.py  # ApiChannel (canal de chat) y ChatBridge (pedido HTTP ↔ turno del chat)
+│   │   ├── auth.py     # clave: generación, huella, comprobación y pausa tras fallos
+│   │   ├── icons.py    # íconos PNG dibujados en código
+│   │   ├── app.py      # arranque dentro del proceso de Telegram y comando api-clave
+│   │   └── static/     # app web (PWA): index.html, app.js, app.css, sw.js, manifest
 │   └── cli.py          # punto de entrada por consola (chat de consola y subcomandos)
+├── clients/scriptable/  # widget del iPhone (Scriptable)
 ├── tests/
 ├── .github/workflows/  # CI: pytest en cada PR y push a main
 ├── docs/
@@ -183,8 +196,12 @@ jarvis/
   nunca invitar ni avisar a otras personas (`sendUpdates="none"`).
 - Las acciones programadas (como el resumen diario) no son tools: el destinatario es fijo por
   configuración y el modelo no puede cambiarlo ni disparar envíos.
-- El chat de Telegram solo atiende `TELEGRAM_OWNER_ID` en chat privado y no arranca sin él. JARVIS no
-  abre puertos (long polling). El token del bot nunca debe aparecer en logs ni en mensajes de error.
+- El chat de Telegram solo atiende `TELEGRAM_OWNER_ID` en chat privado y no arranca sin él (long
+  polling). El token del bot nunca debe aparecer en logs ni en mensajes de error.
+- JARVIS no queda expuesto en la red: la API del iPhone (apagada por defecto) solo escucha en
+  `127.0.0.1` y se publica únicamente con `tailscale serve` (nunca `tailscale funnel` ni puertos del
+  router). Siempre con clave (solo su huella en el equipo, comparación en tiempo constante, pausa tras
+  fallos), sin CORS y con CSP estricta; sus registros nunca guardan contenido.
 - No editar ni recortar el historial de una conversación en curso (invalida el razonamiento
   preservado del modelo): para empezar de cero, se abre una conversación nueva.
 - Mantener `.env.example` actualizado con los nombres de las variables, sin valores reales.
@@ -225,5 +242,6 @@ jarvis/
 - Notas de voz y "Hey JARVIS" (una vez): `uv run jarvis preparar-voz`
 - Probar "Hey JARVIS" en el PC: `uv run jarvis escuchar`
 - Probar la voz: `uv run jarvis probar-voz "texto"`
+- Clave de la app del iPhone: `uv run jarvis api-clave` (y `tailscale serve --bg 8765` una vez)
 - Estado: `uv run jarvis estado`
 - Tests: `uv run pytest` (en la CI, sin el grupo de voz)

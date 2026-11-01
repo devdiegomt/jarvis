@@ -20,6 +20,7 @@ from jarvis.reminders import ReminderStore
 from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskInfo, describe_result
 from jarvis.proactive import describe_proactive
 from jarvis.speech import describe_speech
+from jarvis.api.app import describe_api
 from jarvis.tasks import TaskStore
 from jarvis.usage import UsageLog, spending_text
 from jarvis.voice import describe_voice
@@ -99,6 +100,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
     lines.append(f"Búsqueda en internet: {_describe_web(settings)}")
     lines.append(f"Avisos: {describe_proactive(settings.proactive)}")
     lines.append(f"Correo: {_describe_mail(settings)}")
+    lines.append(f"App del iPhone: {describe_api(settings.api)}")
     place = ", ".join(part for part in (settings.web.city, settings.web.country) if part)
     lines.append(f"Clima: Open-Meteo para {place}" if place else "Clima: sin ciudad (configura JARVIS_CIUDAD)")
 

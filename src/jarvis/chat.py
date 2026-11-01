@@ -241,7 +241,14 @@ class ChatService:
         except Exception:
             logger.exception("Error inesperado con el evento %s.", event.id)
             self._send_safely(event.sender, UNEXPECTED_ERROR_TEXT)
+        self._event_done(event)
         return True
+
+    def _event_done(self, event: ChatEvent) -> None:
+        """Avisa al canal que terminó de atender un evento (la app espera eso para responder)."""
+        finished = getattr(self._channel, "event_finished", None)
+        if finished is not None:
+            finished(event)
 
     def _run_forever(self) -> None:
         while True:
@@ -458,17 +465,20 @@ class ChatService:
                 answer_id, _, value = event.data.partition(":")
                 if answer_id != confirmation_id:
                     self._handle_other_button(event)
+                    self._event_done(event)
                     continue
                 self._channel.acknowledge(event)
                 return value == "si"
 
             text = self._read_text(event)  # una nota de voz con "sí" también vale
             if text is None:
+                self._event_done(event)
                 continue
             answer = parse_yes_no(text)
             if answer is not None:
                 return answer
             self._channel.send_text(event.sender, ASK_AGAIN_TEXT)
+            self._event_done(event)
 
     def _handle_other_button(self, answer: ButtonAnswer) -> None:
         """Botón que no responde a la confirmación en curso: de otra función o de una pregunta vieja."""

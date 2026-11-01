@@ -14,6 +14,7 @@ from datetime import timedelta
 from typing import Any, NoReturn
 
 from jarvis.agenda import CalendarSource, build_calendar
+from jarvis.api.app import describe_api, start_api
 from jarvis.assistant import build_assistant
 from jarvis.chat import COMMANDS, ChatService
 from jarvis.config import (
@@ -71,6 +72,15 @@ def run_telegram(scheduled: bool = False) -> None:
     channel = TelegramChannel(client)
     delivery = ReminderDelivery(assistant.reminders, channel, telegram.owner_id, settings.timezone, now)
 
+    quick_commands = build_quick_commands(
+        calendar=calendar,
+        tasks=assistant.tasks,
+        reminders=assistant.reminders,
+        weather=assistant.weather,
+        usage=assistant.usage,
+        now=now,
+        timezone=settings.timezone,
+    )
     chat = ChatService(
         channel=channel,
         store=assistant.conversations,
@@ -91,15 +101,7 @@ def run_telegram(scheduled: bool = False) -> None:
         purges=[assistant.tasks.purge_old, assistant.usage.purge_old],
         watched=assistant.watched,
         usage_log=assistant.usage,
-        quick_commands=build_quick_commands(
-            calendar=calendar,
-            tasks=assistant.tasks,
-            reminders=assistant.reminders,
-            weather=assistant.weather,
-            usage=assistant.usage,
-            now=now,
-            timezone=settings.timezone,
-        ),
+        quick_commands=quick_commands,
     )
     poller = TelegramPoller(
         client, telegram.owner_id, deliver=chat.submit, mark_processed=assistant.conversations.mark_processed
@@ -133,6 +135,9 @@ def run_telegram(scheduled: bool = False) -> None:
     logger.info("Notas de voz: %s. Respuestas con voz: %s.", voice_status, speech_status, extra=FILE_ONLY)
     logger.info("Hey JARVIS en el PC: %s.", wake_status, extra=FILE_ONLY)
     logger.info("Avisos: %s.", describe_proactive(settings.proactive), extra=FILE_ONLY)
+    logger.info("App del iPhone: %s.", describe_api(settings.api), extra=FILE_ONLY)
+    if settings.api.enabled:
+        start_api(assistant, quick_commands)
     if settings.wake_word.enabled:
         from jarvis.pc_voice import start_pc_voice  # usa numpy, del grupo opcional de voz
 

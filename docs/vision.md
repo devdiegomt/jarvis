@@ -50,16 +50,15 @@ desarrollador de Apple (99 USD al año). Mientras tanto, sin Mac:
   próxima reunión y los pendientes, sin gastar IA.
 - **Telegram** ya funciona en el iPhone.
 
-Todo eso requiere que JARVIS sea **accesible desde el celular**, hoy imposible porque no abre puertos
-(regla de seguridad). La forma prevista es **Tailscale**: una red privada entre el PC y el iPhone,
-sin exponer nada a internet, más una clave de acceso propia. Es una decisión de seguridad relevante y
-llevará su ADR.
+Todo eso requiere que JARVIS sea **accesible desde el celular** sin exponerlo a internet. Desde la
+v0.16 la API solo escucha en el PC y se publica con **Tailscale** (una red privada entre el PC y el
+iPhone), con una clave propia. Ver [ADR 021](adr/021-api-por-tailscale.md).
 
 ## Orden propuesto
 
 1. **v0.15:** gastar menos y medir (caché, `/gasto`, clima con Open-Meteo, comandos sin IA). Hecha.
 2. **v0.16:** acceso desde el iPhone: API propia de JARVIS, solo por Tailscale y con clave. Encima, la
-   PWA, los Atajos de Siri y el widget de Scriptable.
+   PWA, los Atajos de Siri y el widget de Scriptable. Hecha.
 3. **Después:** los módulos de más uso, empezando por Dinero o Movilidad.
 4. **Con la Mac:** app nativa con widgets, sobre la misma API.
 5. **Más adelante:** alojamiento en un servidor (si el PC encendido deja de bastar), Alexa, llamadas

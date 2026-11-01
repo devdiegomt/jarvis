@@ -8,7 +8,8 @@ de agente propio (sin frameworks).
 
 ## Estado
 
-**v0.15**: comandos al instante sin gastar IA (`/hoy`, `/clima`, `/gasto`…), clima gratis con
+**v0.16**: JARVIS en el iPhone (app instalable, Siri y widget) a través de tu red privada de
+Tailscale; comandos al instante sin gastar IA (`/hoy`, `/clima`, `/gasto`…), clima gratis con
 Open-Meteo y medición de cuánto cuesta cada respuesta; te avisa de los correos de tus clientes,
 antes de cada reunión y te da un vistazo a mañana por la noche; lee tu Google
 Calendar y agenda, mueve o cancela tus eventos (siempre con tu
@@ -336,6 +337,81 @@ JARVIS usa la caché de Anthropic: la parte que se repite en cada llamada (instr
 historial) cuesta el 10 % al leerla de la caché, que dura 5 minutos. Por eso los mensajes seguidos y
 los que usan tools salen bastante más baratos.
 
+## JARVIS en el iPhone
+
+JARVIS tiene una app web que se instala en el iPhone (pestañas **Hoy** y **Chat**), responde a un
+**Atajo de Siri** y alimenta un **widget**. Todo llega a tu PC por
+[Tailscale](https://tailscale.com), una red privada entre tus dispositivos: JARVIS solo escucha en tu
+propio PC (`127.0.0.1`), nada queda abierto a internet, y además pide una clave.
+
+### 1. Tailscale (una sola vez)
+
+1. Crea una cuenta gratis en [tailscale.com](https://tailscale.com) e instala Tailscale en el PC
+   (Windows) y en el iPhone (App Store), con la **misma cuenta**. En el iPhone, activa la VPN.
+2. En el [panel de Tailscale](https://login.tailscale.com/admin/dns), en **DNS**, activa **MagicDNS** y
+   **HTTPS Certificates**.
+3. En el PC, en PowerShell:
+
+   ```powershell
+   tailscale serve --bg 8765
+   ```
+
+   Te mostrará la dirección de la app, por ejemplo `https://mi-pc.tail1234.ts.net`. Queda guardado:
+   no hay que repetirlo al reiniciar. **Nunca uses `tailscale funnel`**: ese sí lo abriría a internet.
+
+### 2. Activar la app en JARVIS
+
+```bash
+uv run python -m jarvis api-clave
+```
+
+Copia la clave que muestra (solo se ve una vez; en el PC queda solo su huella). Agrega `JARVIS_API=si`
+a tu `.env` y reinicia JARVIS en segundo plano (`quitar-telegram` y `programar-telegram`). `estado`
+muestra *"App del iPhone: activa…"*.
+
+### 3. Instalar la app
+
+En el iPhone, abre la dirección de Tailscale en **Safari**, escribe la clave y toca **Compartir →
+Agregar a inicio**. Se abre a pantalla completa, como una app:
+
+- **Hoy:** clima, próxima reunión, reuniones, recordatorios y pendientes (sin IA: no gasta).
+- **Chat:** igual que Telegram, con las mismas confirmaciones (botones Sí / No). Para hablarle, usa el
+  micrófono del teclado. Es una conversación aparte de la de Telegram.
+
+### 4. Atajo de Siri
+
+En la app **Atajos**, crea un atajo llamado **JARVIS** con estas acciones:
+
+1. **Dictar texto** (idioma: español).
+2. **Obtener contenido de URL**: `https://mi-pc.tail1234.ts.net/api/chat`, método **POST**,
+   encabezado `Authorization` con el valor `Bearer TU-CLAVE`, y cuerpo **JSON** con el campo `texto`
+   = *Texto dictado*.
+3. **Obtener valor del diccionario**: clave `texto`.
+4. **Leer texto** (el valor del diccionario).
+
+Di *"Oye Siri, JARVIS"* y pídele lo que quieras. Si algo necesita confirmación, Siri te lee la pregunta:
+vuelve a lanzar el atajo y di *"sí"* o *"no"*.
+
+### 5. Widget
+
+1. Instala [Scriptable](https://apps.apple.com/app/scriptable/id1405459188) (gratis).
+2. Crea un script nuevo, pega [`clients/scriptable/jarvis-widget.js`](clients/scriptable/jarvis-widget.js)
+   y cambia `URL` por tu dirección de Tailscale.
+3. Ejecútalo una vez: te pide la clave y la guarda en el Llavero.
+4. Agrega un widget de Scriptable (mediano) a la pantalla de inicio y elige el script.
+
+Muestra el clima, la próxima reunión y los pendientes de hoy, y se actualiza solo (sin gastar IA).
+
+### Seguridad y problemas comunes
+
+- **Solo tus dispositivos** llegan a JARVIS (los de tu cuenta de Tailscale), y además con la clave.
+  Para exigir también tu cuenta: `JARVIS_API_USUARIO=tu-correo@gmail.com` en `.env`.
+- Tras 5 claves equivocadas seguidas, la app se pausa un minuto.
+- ¿Perdiste el iPhone o crees que alguien vio la clave? Ejecuta `api-clave` de nuevo: la anterior
+  deja de servir.
+- *"No pude conectar con JARVIS"*: revisa que el PC esté encendido, la VPN de Tailscale activa en el
+  iPhone y `tailscale serve status` en el PC.
+
 ## Pendientes y memoria
 
 **Pendientes** son cosas por hacer sin hora fija; si necesitas un aviso a una hora, pide un
@@ -602,6 +678,9 @@ texto de tus mensajes.
 | `JARVIS_VISTAZO_MANANA` | Hora del vistazo a mañana, de domingo a jueves (`no` = sin vistazo) | `20:00` |
 | `JARVIS_CORREO` | Avisos de correos de clientes y lectura de Gmail: `si` o `no` | `si` |
 | `JARVIS_CORREO_MINUTOS` | Cada cuántos minutos revisa los correos (1 a 60) | `2` |
+| `JARVIS_API` | App del iPhone, Siri y widget (por Tailscale): `si` o `no` | `no` |
+| `JARVIS_API_PUERTO` | Puerto local de la app (el de `tailscale serve`) | `8765` |
+| `JARVIS_API_USUARIO` | Si se define, solo esa cuenta de Tailscale puede entrar | |
 | `JARVIS_BUSQUEDA` | Búsqueda en internet y lectura de enlaces: `si` o `no` | `si` |
 | `JARVIS_CIUDAD` / `JARVIS_PAIS` | Tu ciudad y país (código de dos letras), para el clima y las búsquedas locales | |
 | `JARVIS_ESFUERZO` | Cuánto razona Claude en el chat y la voz: `low` (rápido), `medium`, `high`, `xhigh`, `max` | `low` |
