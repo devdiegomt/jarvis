@@ -19,6 +19,7 @@ import sys
 from collections.abc import Callable
 from typing import Any
 from datetime import datetime
+from pathlib import Path
 
 import anthropic
 
@@ -46,7 +47,9 @@ from jarvis.mail_watch import WatchList
 from jarvis.prompts import build_system_prompt
 from jarvis.reminders import ReminderStore
 from jarvis.tasks import TaskStore
+from jarvis.money import MoneyStore
 from jarvis.tools import build_registry
+from jarvis.trm import TrmService
 from jarvis.usage import UsageLog
 
 EXIT_COMMAND = "salir"
@@ -96,6 +99,9 @@ def build_agent() -> tuple[Agent, CalendarSource, UsageLog]:
             watched=WatchList(db_path),
             mail=mail,
             weather=weather,
+            money=MoneyStore(db_path, now=now),
+            currency=settings.money.currency,
+            trm=TrmService(),
         ),
         model=settings.model,
         system_prompt=build_system_prompt(
@@ -111,6 +117,27 @@ def _record_console_usage(usage_log: UsageLog, agent: Agent) -> None:
     usage = agent.last_usage
     if usage.total_input or usage.output_tokens:
         usage_log.record("consola", agent.model, usage)
+
+
+def run_export_money(month: str | None, year: str | None, file: str | None) -> None:
+    """`jarvis exportar-dinero`: CSV de gastos e ingresos (para el contador o una hoja de cálculo)."""
+    from jarvis.money_report import export_period, moves_csv
+
+    try:
+        settings = load_settings()
+        start, end, default_name = export_period(datetime.now(settings.timezone).date(), month, year)
+    except ConfigError as exc:
+        print(f"Error de configuración: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except ValueError:
+        print("Usa --mes YYYY-MM o --anio YYYY.", file=sys.stderr)
+        sys.exit(1)
+    store = MoneyStore(settings.summary.db_path, now=lambda: datetime.now(settings.timezone))
+    target = Path(file or default_name)
+    content = moves_csv(store, start, end)
+    target.write_text(content, encoding="utf-8-sig")  # con BOM: Excel lo abre con tildes correctas
+    rows = content.count("\n") - 1
+    print(f"{rows} movimiento(s) del {start:%d/%m/%Y} al {end:%d/%m/%Y} guardados en {target.resolve()}.")
 
 
 def run_chat() -> None:
@@ -377,6 +404,12 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("escuchar", help="Prueba «Hey JARVIS» en el PC (micrófono y parlantes).")
     try_voice = commands.add_parser("probar-voz", help="Dice un texto por los parlantes con la voz configurada.")
     try_voice.add_argument("texto", nargs="?", default="Hola, soy JARVIS. ¿En qué te ayudo hoy?")
+    export = commands.add_parser(
+        "exportar-dinero", help="Guarda tus gastos e ingresos en un CSV (mes en curso por defecto)."
+    )
+    export.add_argument("--mes", help="Mes a exportar, YYYY-MM.")
+    export.add_argument("--anio", help="Año completo a exportar, YYYY.")
+    export.add_argument("--archivo", help="Ruta del CSV (por defecto, dinero-<periodo>.csv en esta carpeta).")
     commands.add_parser("api-clave", help="Crea la clave de la app del iPhone (la anterior deja de servir).")
     commands.add_parser("estado", help="Muestra la configuración, las tareas programadas y los registros.")
     return parser
@@ -415,6 +448,8 @@ def main(argv: list[str] | None = None) -> None:
         run_listen()
     elif args.command == "probar-voz":
         run_try_voice(args.texto)
+    elif args.command == "exportar-dinero":
+        run_export_money(args.mes, args.anio, args.archivo)
     elif args.command == "api-clave":
         from jarvis.api.app import run_api_key
 

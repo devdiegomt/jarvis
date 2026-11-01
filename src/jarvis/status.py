@@ -2,7 +2,7 @@
 
 import os
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from jarvis.config import (
@@ -21,6 +21,7 @@ from jarvis.scheduler import SUMMARY_TASK, TELEGRAM_TASK, SchedulerError, TaskIn
 from jarvis.proactive import describe_proactive
 from jarvis.speech import describe_speech
 from jarvis.api.app import describe_api
+from jarvis.money import MoneyStore
 from jarvis.tasks import TaskStore
 from jarvis.usage import UsageLog, spending_text
 from jarvis.voice import describe_voice
@@ -112,6 +113,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
             "Recordatorios pendientes: ninguno",
             "Pendientes: ninguno",
             "Memoria: vacía",
+            "Dinero: sin movimientos ni cobros",
             "Gasto en Claude: nada todavía",
         ]
 
@@ -136,6 +138,7 @@ def _config_lines(env: Mapping[str, str]) -> list[str]:
         lines.append(f"Memoria: {memories} {'dato guardado' if memories == 1 else 'datos guardados'}")
     else:
         lines.append("Memoria: vacía")
+    lines.append(f"Dinero: {_describe_money(MoneyStore(db_path, now=now), now().date(), settings)}")
     lines += spending_text(UsageLog(db_path, now=now), now(), settings.timezone).splitlines()
     return lines
 
@@ -157,6 +160,20 @@ def _describe_mail(settings: Settings) -> str:
     else:
         who = "sin contactos vigilados"
     return f"activo ({who}, revisa cada {settings.mail.check_minutes} min)"
+
+
+def _describe_money(store: MoneyStore, today: date, settings: Settings) -> str:
+    """Solo cantidades: ni montos ni clientes."""
+    moves = len(store.moves_between(today.replace(day=1), today))
+    receivables = store.open_receivables()
+    late = sum(1 for r in receivables if r.overdue_days(today))
+    alert = settings.money.receivable_alert_time
+    parts = [
+        f"{moves} movimiento(s) este mes",
+        f"{len(receivables)} cobro(s) pendiente(s)" + (f" ({late} vencido(s))" if late else ""),
+        f"aviso de cobros a las {alert:%H:%M}" if alert else "aviso de cobros apagado",
+    ]
+    return ", ".join(parts)
 
 
 def _describe_web(settings: Settings) -> str:

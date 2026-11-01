@@ -10,9 +10,12 @@ from typing import Any
 
 from jarvis.agenda import CalendarError, CalendarSource, Meeting, meeting_to_line
 from jarvis.dates import format_spanish_date
+from jarvis.money import MoneyStore, format_money
+from jarvis.money_report import due_receivables, month_text, receivable_line, receivables_text, trm_text
 from jarvis.reminders import ReminderStore
 from jarvis.summary import task_to_line
 from jarvis.tasks import TaskStore
+from jarvis.trm import TrmService
 from jarvis.usage import UsageLog, spending_text
 from jarvis.weather import WeatherError, WeatherService, day_line, weather_text
 
@@ -34,8 +37,9 @@ def today_text(
     weather: WeatherService | None,
     now: datetime,
     timezone: tzinfo,
+    money: MoneyStore | None = None,
 ) -> str:
-    """Agenda, clima, recordatorios y pendientes de hoy."""
+    """Agenda, clima, recordatorios, pendientes y cobros que vencen hoy."""
     today = now.astimezone(timezone).date()
     lines = [f"📅 Hoy, {format_spanish_date(today)}"]
     forecast = weather.day(today) if weather is not None else None
@@ -59,6 +63,10 @@ def today_text(
     due = tasks.due_by(today)
     if due:
         lines += ["", "Pendientes (vencen hoy o atrasados):"] + [f"- {task_to_line(t, today)}" for t in due]
+
+    receivables = due_receivables(money, today) if money is not None else []
+    if receivables:
+        lines += ["", "Cobros (vencen hoy o vencidos):"] + [f"- {receivable_line(r, today)}" for r in receivables]
     return "\n".join(lines)
 
 
@@ -116,21 +124,36 @@ def build_quick_commands(
     usage: UsageLog,
     now: Callable[[], datetime],
     timezone: tzinfo,
+    money: MoneyStore | None = None,
+    trm: TrmService | None = None,
+    currency: str = "COP",
 ) -> dict[str, Callable[[], str]]:
     """Comando ("/hoy") → función que arma la respuesta."""
 
     def today() -> date:
         return now().astimezone(timezone).date()
 
-    return {
+    commands = {
         "/hoy": lambda: today_text(
-            calendar=calendar, tasks=tasks, reminders=reminders, weather=weather, now=now(), timezone=timezone
+            calendar=calendar,
+            tasks=tasks,
+            reminders=reminders,
+            weather=weather,
+            now=now(),
+            timezone=timezone,
+            money=money,
         ),
         "/pendientes": lambda: tasks_text(tasks, today()),
         "/recordatorios": lambda: reminders_text(reminders, now(), timezone),
         "/clima": lambda: weather_command_text(weather, today()),
         "/gasto": lambda: spending_text(usage, now(), timezone),
     }
+    if money is not None:
+        commands["/dinero"] = lambda: month_text(money, today(), currency)
+        commands["/cobros"] = lambda: receivables_text(money, today())
+    if trm is not None:
+        commands["/trm"] = lambda: trm_text(trm, today())
+    return commands
 
 
 def today_data(
@@ -141,6 +164,7 @@ def today_data(
     weather: WeatherService | None,
     now: datetime,
     timezone: tzinfo,
+    money: MoneyStore | None = None,
 ) -> dict[str, Any]:
     """Lo mismo que `/hoy`, en datos, para la app y el widget del iPhone (sin IA)."""
     local_now = now.astimezone(timezone)
@@ -190,6 +214,15 @@ def today_data(
         for t in tasks.due_by(today)
     ]
     data["pendientes_abiertos"] = len(tasks.open())
+    data["cobros"] = [
+        {
+            "cliente": r.client,
+            "monto": format_money(r.amount, r.currency),
+            "vence": r.due_date.isoformat() if r.due_date else None,
+            "dias_de_atraso": r.overdue_days(today),
+        }
+        for r in (due_receivables(money, today) if money is not None else [])
+    ]
     return data
 
 

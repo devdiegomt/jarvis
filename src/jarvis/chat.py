@@ -40,6 +40,7 @@ HELP_TEXT = (
     "También entiendo notas de voz.\n\n"
     "Al instante y sin gastar créditos de IA:\n"
     "/hoy: tu día (agenda, clima, recordatorios y pendientes)\n/pendientes · /recordatorios · /clima\n"
+    "/dinero: tus gastos e ingresos del mes · /cobros: lo que te deben · /trm: el dólar hoy\n"
     "/gasto: cuánto has gastado en Claude\n\n"
     "/nuevo: empezar una conversación nueva\n/voz: elegir cuándo te respondo con voz\n"
     "/memoria: ver lo que recuerdo de ti\n/clientes: ver de quién te aviso cuando llega un correo\n"
@@ -93,6 +94,9 @@ COMMANDS = {
     "pendientes": "Ver tus pendientes",
     "recordatorios": "Ver tus recordatorios",
     "clima": "Clima de hoy y los próximos días",
+    "dinero": "Tus gastos e ingresos del mes",
+    "cobros": "Lo que te deben tus clientes",
+    "trm": "El dólar hoy (TRM)",
     "gasto": "Cuánto has gastado en Claude",
     "nuevo": "Conversación nueva",
     "voz": "Elegir cuándo responder con voz",

@@ -80,6 +80,9 @@ def run_telegram(scheduled: bool = False) -> None:
         usage=assistant.usage,
         now=now,
         timezone=settings.timezone,
+        money=assistant.money,
+        trm=assistant.trm,
+        currency=settings.money.currency,
     )
     chat = ChatService(
         channel=channel,
@@ -121,6 +124,8 @@ def run_telegram(scheduled: bool = False) -> None:
         watched=assistant.watched,
         mail_interval=timedelta(minutes=settings.mail.check_minutes),
         weather=assistant.weather,
+        money=assistant.money,
+        receivable_time=settings.money.receivable_alert_time,
     )
     if notifier.enabled:
         threading.Thread(target=notifier.run_forever, name="jarvis-avisos", daemon=True).start()

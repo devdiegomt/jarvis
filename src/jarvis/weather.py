@@ -5,22 +5,16 @@ mañana. La ubicación sale de `JARVIS_CIUDAD` y `JARVIS_PAIS`; solo se envían 
 de la ciudad (para ubicarla) y sus coordenadas, nunca nada del usuario.
 """
 
-import json
-import ssl
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, tzinfo
-from functools import cache
 from typing import Any
 
-import truststore
-
 from jarvis.dates import format_spanish_date
+from jarvis import net
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -280,18 +274,7 @@ def _day_name(day: date, today: date) -> str:
 
 def http_get_json(url: str, timeout: float) -> Any:
     """GET verificado con el almacén de certificados del sistema (como el resto de JARVIS)."""
-    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "JARVIS"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout, context=_ssl_context()) as response:
-            return json.loads(response.read())
-    except urllib.error.HTTPError as exc:
-        raise WeatherError(f"Open-Meteo no respondió bien ({exc.code}). Inténtalo más tarde.") from None
-    except (urllib.error.URLError, OSError):
-        raise WeatherError("No pude conectar con Open-Meteo para ver el clima (revisa tu conexión).") from None
-    except ValueError:
-        raise WeatherError("Open-Meteo devolvió una respuesta que no entiendo.") from None
-
-
-@cache
-def _ssl_context() -> ssl.SSLContext:
-    return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        return net.get_json(url, timeout, "Open-Meteo")
+    except net.NetError as exc:
+        raise WeatherError(f"{exc} No pude ver el clima.") from None

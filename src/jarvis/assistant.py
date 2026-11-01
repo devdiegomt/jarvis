@@ -18,10 +18,12 @@ from jarvis.gmail_reader import GmailReader, gmail_read_service_factory
 from jarvis.long_term_memory import MemoryStore
 from jarvis.mail_watch import WatchList
 from jarvis.memory import ConversationStore
+from jarvis.money import MoneyStore
 from jarvis.reminders import ReminderStore
 from jarvis.speech import Speaker, build_speaker
 from jarvis.tasks import TaskStore
 from jarvis.tools import Confirmer, build_registry
+from jarvis.trm import TrmService
 from jarvis.usage import UsageLog
 from jarvis.voice import Transcriber, build_transcriber
 from jarvis.weather import WeatherService
@@ -43,6 +45,8 @@ class Assistant:
     mail: GmailReader | None  # None si los avisos de correo están apagados o Google no está autorizado
     usage: UsageLog
     weather: WeatherService | None  # None si no hay ciudad configurada (JARVIS_CIUDAD)
+    money: MoneyStore
+    trm: TrmService
 
     def agent_factory(self, history: list, system_prompt: str, confirm: Confirmer) -> Agent:
         return Agent(
@@ -58,6 +62,9 @@ class Assistant:
                 watched=self.watched,
                 mail=self.mail,
                 weather=self.weather,
+                money=self.money,
+                currency=self.settings.money.currency,
+                trm=self.trm,
             ),
             model=self.settings.model,
             system_prompt=system_prompt,
@@ -99,6 +106,8 @@ def build_assistant(settings: Settings, calendar: CalendarSource) -> Assistant:
         mail=build_mail_reader(settings),
         usage=UsageLog(db_path, now=now),
         weather=build_weather(settings),
+        money=MoneyStore(db_path, now=now),
+        trm=TrmService(),
     )
 
 

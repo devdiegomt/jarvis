@@ -1,6 +1,6 @@
 # Especificación de requisitos de software (SRS): JARVIS
 
-- **Versión del documento:** 2.7 (cubre hasta la v0.16)
+- **Versión del documento:** 2.8 (cubre hasta la v0.17)
 - **Fecha:** 2026-10-31
 - **Estado:** vivo; se actualiza al cerrar cada versión
 
@@ -256,6 +256,20 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   la app está activa y cómo publicarla.
 - **RF-77.** El repositorio incluye un widget para Scriptable y el README explica el Atajo de Siri.
 
+### v0.17: dinero
+
+- **RF-78.** El usuario registra, consulta y borra gastos e ingresos en lenguaje natural (monto,
+  categoría, descripción, fecha y moneda; por defecto `JARVIS_MONEDA`); no se aceptan fechas futuras.
+- **RF-79.** `/dinero` y la tool `resumen_dinero` muestran el mes: gastos por categoría, ingresos,
+  balance y comparación con el mes anterior, calculados en código.
+- **RF-80.** El usuario registra lo que le deben sus clientes (con vencimiento opcional), lo consulta
+  con `/cobros` y lo marca como pagado, lo que registra el ingreso. JARVIS avisa por Telegram el día que
+  vence y cada 7 días mientras siga sin pagar (`JARVIS_AVISO_COBROS`), y los muestra en `/hoy`, el
+  resumen de la mañana y la app.
+- **RF-81.** La TRM oficial del día (datos.gov.co) está en `/trm`, en el resumen de la mañana y en la
+  tool `get_trm`, que convierte entre dólares y pesos en código.
+- **RF-82.** `jarvis exportar-dinero` guarda los movimientos del mes o del año en un CSV.
+
 ## 4. Requisitos no funcionales
 
 ### 4.1 Seguridad
@@ -301,6 +315,10 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
   en bloques de 80 ms y se descarta; solo el pedido que sigue a la palabra de activación se graba,
   en memoria, para transcribirlo en el PC. Nada se escribe en disco ni sale del equipo, y los
   registros solo anotan activaciones y duraciones. Mientras JARVIS habla, el micrófono se ignora.
+- **RNF-08i.** Los datos de dinero se guardan solo en el equipo, sin conexión con bancos y sin
+  caducidad (el usuario los borra). Nunca se guardan números de tarjeta, cuenta o documento. Los
+  montos se guardan en centavos enteros. Los registros, los avisos guardados y `estado` solo contienen
+  cantidades, nunca montos, clientes ni descripciones. A datos.gov.co solo se le pide la TRM de una fecha.
 - **RNF-08h.** Los correos no se guardan en el equipo: la lista de contactos vigilados y los IDs de
   los correos ya avisados (30 días) son lo único que queda en `jarvis.db`. Los registros no contienen
   remitentes, asuntos ni texto de correos.
@@ -385,4 +403,5 @@ La v0.4 implementó estos requisitos con WhatsApp; la v0.5 los traslada a Telegr
 | RF-65 a RF-69 | `mail_watch.py`, `gmail_reader.py`, `tools/correo.py`, `proactive.py`, `chat.py`, `prompts.py`, `google_auth.py`, `status.py` | `test_mail.py` |
 | RF-70 a RF-73 | `usage.py`, `agent.py`, `weather.py`, `tools/clima.py`, `quick.py`, `chat.py`, `summary.py`, `proactive.py`, `status.py` | `test_usage.py`, `test_weather.py` |
 | RF-74 a RF-77 | `api/`, `chat.py`, `quick.py`, `config.py`, `status.py`, `telegram/app.py`, `clients/scriptable/` | `test_api.py` |
+| RF-78 a RF-82 | `money.py`, `money_report.py`, `trm.py`, `tools/dinero.py`, `proactive.py`, `quick.py`, `summary_cli.py`, `cli.py`, `status.py` | `test_money.py` |
 | RNF-01 a RNF-08 | `config.py`, `google_auth.py`, `telegram/client.py`, logs | `test_config.py`, `test_google_auth.py`, `test_telegram.py` |

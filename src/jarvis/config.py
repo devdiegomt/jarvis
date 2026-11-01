@@ -128,6 +128,14 @@ class ProactiveSettings:
 
 
 @dataclass(frozen=True)
+class MoneySettings:
+    """Dinero: moneda por defecto y hora del aviso de cobros (None lo apaga)."""
+
+    currency: str = "COP"
+    receivable_alert_time: time | None = time(9, 0)
+
+
+@dataclass(frozen=True)
 class ApiSettings:
     """API para el iPhone (app web, Siri y widget). Solo escucha en el propio PC (127.0.0.1); el
     acceso remoto es únicamente por `tailscale serve`, con clave."""
@@ -162,6 +170,7 @@ class Settings:
     proactive: ProactiveSettings = ProactiveSettings()
     mail: MailSettings = MailSettings()
     api: ApiSettings = ApiSettings()
+    money: MoneySettings = MoneySettings()
 
 
 def read_env() -> Mapping[str, str]:
@@ -193,6 +202,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         proactive=load_proactive_settings(env),
         mail=load_mail_settings(env),
         api=load_api_settings(env),
+        money=load_money_settings(env),
     )
 
 
@@ -339,6 +349,19 @@ def load_proactive_settings(env: Mapping[str, str]) -> ProactiveSettings:
         assert default is not None
         evening_time = _load_time(env, "JARVIS_VISTAZO_MANANA", default)
     return ProactiveSettings(meeting_lead_minutes=lead, evening_time=evening_time)
+
+
+def load_money_settings(env: Mapping[str, str]) -> MoneySettings:
+    currency = (_get(env, "JARVIS_MONEDA") or MoneySettings.currency).strip().upper()
+    if len(currency) != 3 or not currency.isalpha():
+        raise ConfigError(f"JARVIS_MONEDA='{currency}' no es válida: usa un código de 3 letras, como COP o USD.")
+    if _get(env, "JARVIS_AVISO_COBROS").lower() == "no":
+        alert_time = None
+    else:
+        default = MoneySettings.receivable_alert_time
+        assert default is not None
+        alert_time = _load_time(env, "JARVIS_AVISO_COBROS", default)
+    return MoneySettings(currency=currency, receivable_alert_time=alert_time)
 
 
 def load_mail_settings(env: Mapping[str, str]) -> MailSettings:

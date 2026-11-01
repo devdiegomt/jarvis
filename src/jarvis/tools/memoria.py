@@ -5,13 +5,10 @@ piden confirmación; el system prompt pide al modelo avisar cuando recuerda algo
 """
 
 import json
-import re
 
 from jarvis.long_term_memory import MAX_MEMORY_LENGTH, Memory, MemoryLimitError, MemoryStore
+from jarvis.sensitive import has_long_number
 from jarvis.tools.registry import Tool
-
-# Secuencias largas de dígitos (tarjetas, cuentas, documentos): no se guardan en la memoria.
-_LONG_NUMBER = re.compile(r"\d(?:[ -]?\d){11,}")
 
 
 def build_tools(store: MemoryStore) -> list[Tool]:
@@ -21,7 +18,7 @@ def build_tools(store: MemoryStore) -> list[Tool]:
             raise ValueError("El dato no puede estar vacío.")
         if len(text) > MAX_MEMORY_LENGTH:
             raise ValueError(f"El dato no puede superar {MAX_MEMORY_LENGTH} caracteres: resúmelo.")
-        if _LONG_NUMBER.search(text):
+        if has_long_number(text):
             raise ValueError(
                 "No guardo números largos (tarjetas, cuentas, documentos) en la memoria. "
                 "Dile al usuario que por seguridad no lo recordarás."

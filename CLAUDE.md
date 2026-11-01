@@ -72,9 +72,15 @@ El proyecto crece por versiones pequeñas. Implementa SOLO la versión que se pi
 - **v0.16 (hecha):** JARVIS en el iPhone: API HTTP propia (librería estándar) que solo escucha en
   127.0.0.1 y se publica con `tailscale serve`, con clave (`jarvis api-clave`, solo su huella en el
   equipo); app web instalable (PWA: Hoy y Chat), Atajo de Siri y widget de Scriptable. Canal
-  `ApiChannel` sobre `ChatService`. Ver `docs/adr/021-api-por-tailscale.md`.
-- **Siguiente:** a decidir con el usuario (notificaciones push en la PWA, módulo de dinero o de movilidad).
-- Después: módulos de dinero o movilidad; app nativa de iOS cuando haya Mac; alojamiento (servidor,
+  `ApiChannel` sobre `ChatService`. Ver `docs/adr/021-api-por-tailscale.md`. **Pendiente de probar en
+  un iPhone real** (el usuario lo tendrá desde el 1 de diciembre); mientras tanto queda apagada.
+- **v0.17 (hecha):** dinero: gastos e ingresos por chat (`registrar_movimiento`…), cuentas por cobrar a
+  clientes con avisos el día que vencen y cada 7 días (`JARVIS_AVISO_COBROS`), TRM de datos.gov.co
+  (`get_trm`, `/trm`), `/dinero`, `/cobros` y `jarvis exportar-dinero` (CSV). Sumas y conversiones en
+  código, montos en centavos. Ver `docs/adr/022-modulo-de-dinero.md`.
+- **Siguiente:** a decidir con el usuario (presupuestos por categoría, movilidad; push en la PWA tras
+  probar el iPhone).
+- Después: módulo de movilidad; app nativa de iOS cuando haya Mac; alojamiento (servidor,
   nube) según cómo escale.
 - Futuro: Alexa, llamadas telefónicas, multiusuario.
 
@@ -91,7 +97,7 @@ Los requisitos de cada versión están en `docs/srs.md` (actualizarlo al cerrar 
 - `faster-whisper`, `piper-tts`, `openwakeword` y `sounddevice` (grupo opcional `voz`) para entender,
   responder y escuchar "Hey JARVIS" en el PC
 - Azure AI Speech (API REST vía `urllib` + `truststore`), opcional, para una voz más natural
-- Open-Meteo (API REST gratuita, sin clave, vía `urllib` + `truststore`) para el clima
+- Open-Meteo (clima) y datos.gov.co (TRM): APIs gratuitas y sin clave, vía `jarvis.net` (`urllib` + `truststore`)
 - API para el iPhone con `http.server` (librería estándar), publicada con Tailscale (`tailscale serve`);
   app web (PWA) en HTML, CSS y JS propios, sin frameworks ni CDNs
 - SQLite para persistencia local (más adelante Postgres)
@@ -105,8 +111,13 @@ jarvis/
 │   ├── agent.py        # loop del agente (con caché de prompts y suma de tokens)
 │   ├── usage.py        # SQLite: tokens y costo estimado por respuesta (/gasto)
 │   ├── weather.py      # clima con Open-Meteo (pronóstico en memoria 30 min)
-│   ├── quick.py        # comandos sin IA: /hoy, /pendientes, /recordatorios, /clima, /gasto
+│   ├── quick.py        # comandos sin IA: /hoy, /pendientes, /recordatorios, /clima, /gasto, /dinero…
 │   ├── dates.py        # fechas en español
+│   ├── net.py          # GET de APIs públicas JSON (Open-Meteo, datos.gov.co); bloqueado en los tests
+│   ├── money.py        # SQLite: gastos, ingresos y cuentas por cobrar (montos en centavos)
+│   ├── money_report.py # textos sin IA: /dinero, /cobros, /trm, avisos de cobro y CSV
+│   ├── trm.py          # TRM del día (datos.gov.co) y conversión USD ↔ COP
+│   ├── sensitive.py    # detector de números largos (tarjetas, cuentas): nunca se guardan
 │   ├── config.py       # carga de .env y settings
 │   ├── prompts.py      # system prompts (consola y chat)
 │   ├── agenda/         # fuentes de calendario
@@ -151,6 +162,7 @@ jarvis/
 │   │   ├── calendario.py   # crear_evento, mover_evento, cancelar_evento (con confirmación)
 │   │   ├── correo.py       # contactos vigilados, buscar_correos y leer_correo (solo lectura)
 │   │   ├── clima.py        # get_clima (Open-Meteo, solo lectura)
+│   │   ├── dinero.py       # movimientos, cobros y get_trm (sin confirmación: datos internos)
 │   │   └── ...         # reuniones.py, mensajes.py
 │   ├── api/            # API para el iPhone (apagada por defecto)
 │   │   ├── server.py   # servidor HTTP: rutas, clave, cabeceras de seguridad, archivos de la app
@@ -180,7 +192,8 @@ jarvis/
 - Errores de una tool se devuelven al modelo como resultado con `is_error`, no rompen el programa.
 - IA solo donde aporta (ver `docs/vision.md`): lo que se resuelve en código (avisos, comandos directos,
   datos de APIs) no llama a Claude. Toda llamada a Claude usa la caché y registra su consumo.
-- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram, Open-Meteo, Whisper, Piper, Azure) y al
+- Cálculos de dinero (sumas, totales, conversiones) siempre en código con `Decimal`, nunca por el modelo.
+- Cada funcionalidad nueva viene con tests. Las llamadas a APIs externas (Anthropic, Google, Telegram, Open-Meteo, datos.gov.co, Whisper, Piper, Azure) y al
   sistema (Programador de tareas) se mockean en los tests. Ningún test escribe en `~/.config/jarvis`
   (`tests/conftest.py` lo redirige a una carpeta temporal).
 - Al terminar una versión: actualizar este archivo (roadmap) y agregar un ADR si hubo una decisión relevante.
@@ -208,7 +221,7 @@ jarvis/
 - Toda tool que tenga efectos externos (enviar mensajes, crear eventos, borrar algo) debe pedir
   confirmación al usuario antes de ejecutarse. Las tools de solo lectura no la necesitan, ni las
   que solo cambian datos internos de JARVIS y se pueden deshacer (por ejemplo, recordatorios,
-  pendientes o datos de la memoria).
+  pendientes, datos de la memoria o movimientos de dinero).
 - No loguear contenido sensible (mensajes completos, datos de clientes) en producción. El historial
   de conversaciones se guarda solo en el equipo y se borra a los 30 días. Los registros usan
   `jarvis.logs` (rotativos).
@@ -220,6 +233,9 @@ jarvis/
 - El audio de las notas de voz se procesa en memoria y no se guarda en disco ni sale del PC. Las
   respuestas con voz se generan en el PC con Piper; solo si el usuario elige Azure, su texto se
   envía a Microsoft (la clave, en `.env`, nunca en registros ni errores).
+- Los datos de dinero se guardan solo en el equipo, sin conectar bancos; nunca números de tarjeta,
+  cuenta o documento. Registros, avisos guardados y `estado` solo muestran cantidades, nunca montos ni
+  clientes.
 - El registro de consumo de la API guarda solo números (tokens, búsquedas, modelo y canal). A Open-Meteo
   solo se envían la ciudad configurada y sus coordenadas.
 - La búsqueda en internet usa solo las tools de servidor de Anthropic (sin otros proveedores): solo
@@ -243,5 +259,6 @@ jarvis/
 - Probar "Hey JARVIS" en el PC: `uv run jarvis escuchar`
 - Probar la voz: `uv run jarvis probar-voz "texto"`
 - Clave de la app del iPhone: `uv run jarvis api-clave` (y `tailscale serve --bg 8765` una vez)
+- Exportar gastos e ingresos: `uv run jarvis exportar-dinero [--mes YYYY-MM | --anio YYYY]`
 - Estado: `uv run jarvis estado`
 - Tests: `uv run pytest` (en la CI, sin el grupo de voz)
